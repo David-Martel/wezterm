@@ -45,6 +45,14 @@ param(
     [string]$BuildProfile = 'release',
 
     [Parameter()]
+    [ValidateSet('auto', 'on', 'off')]
+    [string]$Sccache = 'auto',
+
+    [Parameter()]
+    [ValidateSet('auto', 'on', 'off')]
+    [string]$Lld = 'auto',
+
+    [Parameter()]
     [switch]$SkipTests,
 
     [Parameter()]
@@ -176,6 +184,22 @@ function Test-Prerequisites {
         Write-Status "WezTerm not found - utilities will still build" -Level Warning
     }
 
+    # Check build acceleration tools (optional)
+    Write-Step "Checking build acceleration tools..."
+    $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue
+    if ($sccacheCmd) {
+        Write-Status "sccache found: $($sccacheCmd.Source)" -Level Success
+    } else {
+        Write-Status "sccache not found (optional)" -Level Warning
+    }
+
+    $lldCmd = Get-Command lld-link -ErrorAction SilentlyContinue
+    if ($lldCmd) {
+        Write-Status "lld-link found: $($lldCmd.Source)" -Level Success
+    } else {
+        Write-Status "lld-link not found (optional)" -Level Warning
+    }
+
     if ($issues.Count -gt 0) {
         Write-Section "Prerequisites Failed"
         foreach ($issue in $issues) {
@@ -191,6 +215,31 @@ function Test-Prerequisites {
 # BUILD FUNCTIONS
 # ============================================================================
 
+function Resolve-Acceleration {
+    $useSccache = $false
+    $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue
+    if ($Sccache -eq 'on') {
+        $useSccache = $true
+    } elseif ($Sccache -eq 'auto') {
+        $useSccache = $null -ne $sccacheCmd
+    }
+
+    $useLld = $false
+    $lldCmd = Get-Command lld-link -ErrorAction SilentlyContinue
+    if ($Lld -eq 'on') {
+        $useLld = $true
+    } elseif ($Lld -eq 'auto') {
+        $useLld = $null -ne $lldCmd
+    }
+
+    return @{
+        UseSccache = $useSccache
+        SccacheCmd = $sccacheCmd
+        UseLld = $useLld
+        LldCmd = $lldCmd
+    }
+}
+
 function Invoke-RustBuild {
     param(
         [hashtable]$Binary,
@@ -198,6 +247,7 @@ function Invoke-RustBuild {
     )
 
     Write-Step "Building $($Binary.Name)..."
+    $accel = Resolve-Acceleration
 
     $buildPath = Join-Path $Script:Config.RootDir $Binary.Path
 
@@ -212,6 +262,52 @@ function Invoke-RustBuild {
 
         if ($Profile -ne 'debug') {
             $cargoFlags += '--profile', $Profile
+        }
+
+        # Apply build acceleration (optional)
+        if ($accel.UseSccache) {
+            if ($accel.SccacheCmd) {
+                $env:RUSTC_WRAPPER = $accel.SccacheCmd.Source
+                if ([string]::IsNullOrWhiteSpace($env:SCCACHE_DIR)) {
+                    $env:SCCACHE_DIR = "T:\\RustCache\\sccache"
+                }
+                if ([string]::IsNullOrWhiteSpace($env:SCCACHE_CACHE_SIZE)) {
+                    $env:SCCACHE_CACHE_SIZE = '10G'
+                }
+                try {
+                    sccache --start-server | Out-Null
+                } catch {
+                    Write-Status "sccache server start failed; continuing without server" -Level Warning
+                }
+            } else {
+                Write-Status "sccache requested but not found; continuing without it" -Level Warning
+            }
+        } else {
+            Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
+        }
+
+        if ($accel.UseLld) {
+            if ($accel.LldCmd) {
+                $existingRustFlags = $env:RUSTFLAGS
+                $lldFlag = '-C linker=lld-link'
+                if ([string]::IsNullOrWhiteSpace($existingRustFlags)) {
+                    $env:RUSTFLAGS = $lldFlag
+                } elseif ($existingRustFlags -notmatch 'lld-link') {
+                    $env:RUSTFLAGS = "$existingRustFlags $lldFlag"
+                }
+            } else {
+                Write-Status "lld-link requested but not found; continuing without it" -Level Warning
+            }
+        }
+
+        # Prefer parallel builds based on CPU count
+        if (-not $env:CARGO_BUILD_JOBS) {
+            $env:CARGO_BUILD_JOBS = $env:NUMBER_OF_PROCESSORS
+        }
+
+        # Enable incremental builds for debug profile
+        if ($Profile -eq 'debug') {
+            $env:CARGO_INCREMENTAL = '1'
         }
 
         # Execute build
@@ -237,6 +333,16 @@ function Invoke-RustBuild {
         }
 
         Write-Status "$($Binary.Name) built successfully" -Level Success
+
+        if ($accel.UseSccache -and $accel.SccacheCmd) {
+            try {
+                $stats = sccache --show-stats 2>&1
+                Write-Status "sccache stats:" -Level Info
+                $stats | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+            } catch {
+                Write-Status "Unable to read sccache stats" -Level Warning
+            }
+        }
         return $binaryPath
 
     } finally {

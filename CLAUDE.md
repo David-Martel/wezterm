@@ -210,8 +210,10 @@ The project uses `sccache` for accelerated builds via shared compilation cache:
 **Configuration** (`.cargo/config.toml`):
 ```toml
 [env]
-SCCACHE_CACHE_SIZE = "15G"
-SCCACHE_DIR = "${CARGO_HOME}/../sccache-cache"
+SCCACHE_SERVER_PORT = "4226"
+SCCACHE_CACHE_COMPRESSION = "zstd"
+SCCACHE_CACHE_SIZE = "30G"
+SCCACHE_DIR = "T:/RustCache/sccache"
 ```
 
 **Usage**:
@@ -240,19 +242,20 @@ sccache --show-stats
 
 ### Custom WezTerm Utilities
 
-This repository includes custom Rust utilities built alongside WezTerm:
+This repository includes custom Rust utilities:
 
-**wezterm-fs-explorer**: High-performance filesystem explorer
+**wezterm-watch**: File watcher with git integration (workspace member)
+- Location: `wezterm-watch/`
+- Features: Real-time monitoring, git status, multiple output formats
+- Build: `cargo build --release -p wezterm-watch`
+- Docs: See `wezterm-watch/README.md`
+
+**wezterm-fs-explorer**: High-performance filesystem explorer (standalone, not in workspace)
 - Location: `wezterm-fs-explorer/`
 - Features: Vim keybindings, git integration, Nerd Font icons, IPC support
 - Build: `cd wezterm-fs-explorer && cargo build --release`
 - Docs: See `wezterm-fs-explorer/README.md`
-
-**wezterm-watch**: File watcher with git integration
-- Location: `wezterm-watch/`
-- Features: Real-time monitoring, git status, multiple output formats
-- Build: `cd wezterm-watch && cargo build --release`
-- Docs: See `wezterm-watch/README.md`
+- Note: Has its own `Cargo.lock`; not part of the main workspace
 
 **Build All Utilities** (Windows):
 ```powershell

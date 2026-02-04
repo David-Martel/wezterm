@@ -12,5 +12,9 @@ rustflags = ["-C", "target-feature=+crt-static"]
 # Global rustc-wrapper removed; we now set RUSTC_WRAPPER selectively in Justfile tasks
 
 [env]
-SCCACHE_CACHE_SIZE = "15G"
-SCCACHE_DIR = "${CARGO_HOME}/../sccache-cache"
+SCCACHE_SERVER_PORT = "4226"
+SCCACHE_CACHE_COMPRESSION = "zstd"
+SCCACHE_CACHE_SIZE = "30G"
+SCCACHE_DIR = "T:/RustCache/sccache"
+
+
