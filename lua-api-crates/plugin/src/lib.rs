@@ -1,7 +1,31 @@
-//! WezTerm Plugin System
+//! # WezTerm Plugin System
 //!
-//! Provides Lua API for managing Git-based plugins using pure Rust gix library.
-//! This replaces the previous git2/libgit2-sys implementation with gitoxide.
+//! Provides Lua API for managing Git-based plugins using the pure-Rust
+//! [`gix`](https://crates.io/crates/gix) library (gitoxide).
+//!
+//! ## Pure-Rust Implementation
+//!
+//! This module uses gix instead of git2/libgit2-sys, eliminating all C library
+//! dependencies for Git operations. Benefits include:
+//!
+//! - **No libgit2 C compilation** - faster builds, simpler CI/CD
+//! - **No OpenSSL dependency** - uses reqwest with rustls for HTTPS
+//! - **Better Windows support** - native Rust implementation
+//!
+//! ## Lua API
+//!
+//! - `wezterm.plugin.require(url)` - Clone and require a plugin from a Git URL
+//! - `wezterm.plugin.list()` - List installed plugins
+//! - `wezterm.plugin.update_all()` - Update all installed plugins
+//!
+//! ## Update Strategy
+//!
+//! Plugins are updated using a fresh-clone approach:
+//! 1. Backup current plugin directory
+//! 2. Clone fresh from remote
+//! 3. On success, remove backup; on failure, restore backup
+//!
+//! This is simpler and more reliable than complex fetch+merge operations.
 
 use anyhow::{anyhow, Context};
 use config::lua::get_or_create_sub_module;

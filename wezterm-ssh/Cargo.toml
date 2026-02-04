@@ -19,7 +19,9 @@ default = ["russh"]
 # Uses ring crypto backend for cross-platform compatibility
 russh = ["dep:russh", "dep:russh-sftp", "dep:async-trait", "dep:tokio"]
 
-# Legacy backends (require OpenSSL)
+# Legacy backends (require OpenSSL) - DEPRECATED
+# These backends are deprecated and will be removed in a future release.
+# Use the default russh backend for pure-Rust SSH with no C dependencies.
 legacy = ["libssh-rs", "ssh2", "dep:async_ossl"]
 vendored-openssl = ["ssh2/vendored-openssl", "libssh-rs/vendored-openssl"]
 vendored-openssl-ssh2 = ["ssh2/vendored-openssl"]

@@ -52,7 +52,14 @@ SCCACHE_CACHE_SIZE = "30G"
 # ----------------------------------------------------------------------------
 # OpenSSL Configuration (vcpkg)
 # ----------------------------------------------------------------------------
-# Use pre-built OpenSSL from vcpkg to avoid build issues
+# OpenSSL is ONLY needed for:
+# 1. Mux server TLS (wezterm-mux-server-impl) - used for client/server communication
+# 2. Legacy SSH backends (optional feature) - russh is now the default
+#
+# SSH connections use pure-Rust russh by default (no OpenSSL required)
+# To use legacy SSH backends, enable the "legacy" feature in wezterm-ssh
+#
+# Use pre-built OpenSSL from vcpkg for mux server TLS
 OPENSSL_DIR = "C:/codedev/vcpkg/installed/x64-windows"
 OPENSSL_NO_VENDOR = "1"
 

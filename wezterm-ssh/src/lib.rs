@@ -1,3 +1,41 @@
+//! # WezTerm SSH
+//!
+//! A higher-level SSH client library providing session management, PTY handling,
+//! and SFTP operations for WezTerm.
+//!
+//! ## Backends
+//!
+//! This crate supports multiple SSH backends:
+//!
+//! - **`russh`** (default, recommended): Pure-Rust SSH implementation using the
+//!   [`russh`](https://crates.io/crates/russh) crate. Zero C dependencies,
+//!   cross-platform support, and native Windows Pageant integration.
+//!
+//! - **`legacy`** (deprecated): OpenSSL-based backends (`libssh-rs` and `ssh2`).
+//!   Requires OpenSSL/vcpkg setup. Will be removed in a future release.
+//!
+//! ## Features
+//!
+//! - SSH session management with host key verification
+//! - PTY allocation and terminal emulation
+//! - SFTP file operations (read, write, list directories)
+//! - SSH config file parsing (`~/.ssh/config`)
+//! - Agent forwarding support
+//!
+//! ## Example
+//!
+//! ```rust,no_run
+//! use wezterm_ssh::{Session, Config, SessionEvent};
+//!
+//! // Load SSH config
+//! let config = Config::new();
+//! let host = config.for_host("example.com");
+//!
+//! // Create session (uses russh by default)
+//! let (session, events) = Session::connect(host)?;
+//! # Ok::<(), anyhow::Error>(())
+//! ```
+
 #[cfg(not(any(feature = "libssh-rs", feature = "ssh2", feature = "russh")))]
 compile_error!("At least one SSH backend must be enabled: libssh-rs, ssh2, or russh");
 

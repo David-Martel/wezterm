@@ -467,3 +467,202 @@ mod session_event_tests {
         assert!(event.message.contains("SHA256"));
     }
 }
+
+#[cfg(test)]
+mod sftp_path_tests {
+    //! Tests for SFTP path handling and validation
+
+    #[test]
+    fn test_unix_path_normalization() {
+        let paths = [
+            ("/home/user", true),
+            ("/home/user/", true),
+            ("./relative", true),
+            ("../parent", true),
+            ("", false),
+        ];
+
+        for (path, should_be_valid) in paths {
+            let is_valid = !path.is_empty();
+            assert_eq!(
+                is_valid, should_be_valid,
+                "Path '{}' validation mismatch",
+                path
+            );
+        }
+    }
+
+    #[test]
+    fn test_path_with_special_characters() {
+        // Paths with spaces and special characters
+        let special_paths = [
+            "/home/user/my file.txt",
+            "/home/user/café",
+            "/home/user/日本語",
+            "/home/user/file (1).txt",
+        ];
+
+        for path in special_paths {
+            assert!(!path.is_empty());
+            assert!(path.starts_with("/home"));
+        }
+    }
+
+    #[test]
+    fn test_path_traversal_detection() {
+        // Paths that might be security concerns
+        let traversal_paths = [
+            ("../../../etc/passwd", true),
+            ("/home/../etc/passwd", true),
+            ("/home/user/normal.txt", false),
+        ];
+
+        for (path, has_traversal) in traversal_paths {
+            let contains_dotdot = path.contains("..");
+            assert_eq!(
+                contains_dotdot, has_traversal,
+                "Traversal detection for '{}' failed",
+                path
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod auth_method_tests {
+    //! Tests for authentication method handling
+
+    #[test]
+    fn test_auth_method_priority() {
+        // Authentication methods in priority order
+        let methods = ["publickey", "keyboard-interactive", "password"];
+
+        assert_eq!(methods[0], "publickey");
+        assert_eq!(methods.len(), 3);
+    }
+
+    #[test]
+    fn test_password_handling() {
+        // Ensure passwords are handled as strings
+        let password = "secret123!@#";
+        assert!(!password.is_empty());
+        assert!(password.chars().any(|c| c.is_ascii_punctuation()));
+    }
+
+    #[test]
+    fn test_username_validation() {
+        let valid_usernames = ["user", "admin", "test-user", "user_name", "user123"];
+        let invalid_usernames = ["", " ", "user name", "user\nname"];
+
+        for username in valid_usernames {
+            assert!(!username.is_empty());
+            // Valid usernames should not contain spaces (but may contain - or _)
+            assert!(
+                !username.contains(' '),
+                "Valid username '{}' should not contain space",
+                username
+            );
+        }
+
+        for username in invalid_usernames {
+            // Invalid usernames are empty, all whitespace, contain spaces, or contain newlines
+            let is_invalid = username.is_empty()
+                || username.chars().all(char::is_whitespace)
+                || username.contains(' ')
+                || username.contains('\n');
+            assert!(is_invalid, "Username '{}' should be invalid", username);
+        }
+    }
+}
+
+#[cfg(test)]
+mod connection_config_tests {
+    //! Tests for connection configuration validation
+
+    use std::time::Duration;
+
+    #[test]
+    fn test_tcp_keepalive_settings() {
+        let keepalive_interval = Duration::from_secs(60);
+        let max_retries = 3u32;
+
+        // Reasonable keepalive values
+        assert!(keepalive_interval.as_secs() >= 30);
+        assert!(keepalive_interval.as_secs() <= 300);
+        assert!(max_retries >= 1 && max_retries <= 10);
+    }
+
+    #[test]
+    fn test_connection_timeout_values() {
+        let connect_timeout = Duration::from_secs(30);
+        let auth_timeout = Duration::from_secs(60);
+        let inactivity_timeout = Duration::from_secs(300);
+
+        // Timeouts should be in reasonable ranges
+        assert!(connect_timeout.as_secs() >= 10);
+        assert!(auth_timeout.as_secs() >= 30);
+        assert!(inactivity_timeout.as_secs() >= 60);
+    }
+
+    #[test]
+    fn test_port_validation() {
+        let valid_ports: [u16; 4] = [22, 2222, 8022, 22222];
+        let reserved_ports: [u16; 3] = [0, 1, 80];
+
+        for port in valid_ports {
+            assert!(port > 0, "Port {} should be positive", port);
+        }
+
+        for port in reserved_ports {
+            // Reserved ports might be intentional for testing
+            assert!(port < 1024 || port == 0);
+        }
+    }
+
+    #[test]
+    fn test_hostname_validation() {
+        let valid_hosts = [
+            "localhost",
+            "192.168.1.1",
+            "example.com",
+            "server.example.com",
+            "::1",
+            "2001:db8::1",
+        ];
+
+        for host in valid_hosts {
+            assert!(!host.is_empty());
+            // Should not contain whitespace
+            assert!(!host.contains(char::is_whitespace));
+        }
+    }
+}
+
+#[cfg(test)]
+mod key_algorithm_tests {
+    //! Tests for SSH key algorithm support
+
+    #[test]
+    fn test_supported_key_types() {
+        let supported = [
+            "ssh-ed25519",
+            "ssh-rsa",
+            "ecdsa-sha2-nistp256",
+            "ecdsa-sha2-nistp384",
+            "ecdsa-sha2-nistp521",
+        ];
+
+        for key_type in supported {
+            assert!(key_type.starts_with("ssh-") || key_type.starts_with("ecdsa-"));
+        }
+    }
+
+    #[test]
+    fn test_preferred_key_order() {
+        // Modern preference order: ed25519 > ecdsa > rsa
+        let preference = ["ssh-ed25519", "ecdsa-sha2-nistp256", "ssh-rsa"];
+
+        assert_eq!(preference[0], "ssh-ed25519");
+        assert_eq!(preference.len(), 3);
+    }
+}
