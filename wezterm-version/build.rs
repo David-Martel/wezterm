@@ -11,19 +11,23 @@ fn main() {
         }
     } else {
         // Otherwise we'll derive it from the git information
+        // Check if we're in a git repository using simple file existence check
+        // to avoid libgit2 linking issues on Windows
+        let git_dir = std::path::Path::new("../.git");
+        let is_git_repo = git_dir.exists() || git_dir.is_file(); // .git can be a file for worktrees
 
-        if let Ok(repo) = git2::Repository::discover(".") {
-            if let Ok(ref_head) = repo.find_reference("HEAD") {
-                let repo_path = repo.path().to_path_buf();
+        if is_git_repo {
+            // Set up cache invalidation for git HEAD
+            let head_file = git_dir.join("HEAD");
+            if head_file.exists() {
+                println!("cargo:rerun-if-changed={}", head_file.display());
 
-                if let Ok(resolved) = ref_head.resolve() {
-                    if let Some(name) = resolved.name() {
-                        let path = repo_path.join(name);
-                        if path.exists() {
-                            println!(
-                                "cargo:rerun-if-changed={}",
-                                path.canonicalize().unwrap().display()
-                            );
+                // Try to read the HEAD ref and watch that too
+                if let Ok(head_contents) = std::fs::read_to_string(&head_file) {
+                    if let Some(ref_path) = head_contents.strip_prefix("ref: ") {
+                        let ref_file = git_dir.join(ref_path.trim());
+                        if ref_file.exists() {
+                            println!("cargo:rerun-if-changed={}", ref_file.display());
                         }
                     }
                 }
