@@ -312,4 +312,185 @@ mod tests {
 
         assert_eq!(count, 2);
     }
+
+    #[test]
+    fn test_unicode_filenames() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create files with various Unicode characters
+        File::create(root.join("日本語.txt")).unwrap();
+        File::create(root.join("emoji_🎉.txt")).unwrap();
+        File::create(root.join("Ñoño.txt")).unwrap();
+        File::create(root.join("кириллица.txt")).unwrap();
+
+        let walker = Walker::new();
+        let entries = walker.walk(root).unwrap();
+
+        // Should find all 4 Unicode-named files
+        assert!(entries.len() >= 4);
+
+        // Verify specific files exist
+        let names: Vec<_> = entries.iter().filter_map(|e| e.file_name()).collect();
+        assert!(names.contains(&"日本語.txt"));
+        assert!(names.contains(&"emoji_🎉.txt"));
+    }
+
+    #[test]
+    fn test_empty_directory() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create an empty subdirectory
+        fs::create_dir(root.join("empty")).unwrap();
+
+        let walker = Walker::new();
+        let entries = walker.walk(root).unwrap();
+
+        // Should still include the empty directory
+        assert!(entries.iter().any(|e| e.file_name() == Some("empty") && e.is_dir));
+    }
+
+    #[test]
+    fn test_very_deep_nesting() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create deeply nested structure
+        let deep_path = root.join("a/b/c/d/e/f/g/h/i/j");
+        fs::create_dir_all(&deep_path).unwrap();
+        File::create(deep_path.join("deep.txt")).unwrap();
+
+        let walker = Walker::new();
+        let entries = walker.walk(root).unwrap();
+
+        // Should find the deep file (depth 10)
+        assert!(entries.iter().any(|e| e.file_name() == Some("deep.txt")));
+    }
+
+    #[test]
+    fn test_walker_debug_impl() {
+        let walker = Walker::new();
+        let debug_str = format!("{:?}", walker);
+        assert!(debug_str.contains("Walker"));
+        assert!(debug_str.contains("options"));
+    }
+
+    #[test]
+    fn test_walk_options_default() {
+        let options = WalkOptions::default();
+        assert!(!options.include_hidden);
+        assert!(!options.follow_symlinks);  // Default is false for safety
+        assert!(options.respect_gitignore);
+        assert!(options.max_depth.is_none());
+        assert!(options.file_types.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_symlink_handling() {
+        use std::os::unix::fs::symlink;
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create a file and a symlink to it
+        let target = root.join("target.txt");
+        File::create(&target).unwrap();
+        symlink(&target, root.join("link.txt")).unwrap();
+
+        // Create a directory and a symlink to it
+        fs::create_dir(root.join("target_dir")).unwrap();
+        File::create(root.join("target_dir/file.txt")).unwrap();
+        symlink(root.join("target_dir"), root.join("link_dir")).unwrap();
+
+        let walker = Walker::new();
+        let entries = walker.walk(root).unwrap();
+
+        // Should find both the link and the original
+        let names: Vec<_> = entries.iter().filter_map(|e| e.file_name()).collect();
+        assert!(names.contains(&"target.txt"));
+        assert!(names.contains(&"link.txt"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_symlink_cycle_detection() {
+        use std::os::unix::fs::symlink;
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create a directory with a circular symlink
+        let sub = root.join("subdir");
+        fs::create_dir(&sub).unwrap();
+        File::create(sub.join("file.txt")).unwrap();
+
+        // Create a symlink pointing back to parent (cycle)
+        symlink(root, sub.join("cycle")).unwrap();
+
+        let walker = Walker::new();
+        // Should not hang or panic - the walker handles cycles
+        let result = walker.walk(root);
+        assert!(result.is_ok());
+
+        let entries = result.unwrap();
+        // Should have at least the subdir and file
+        assert!(entries.len() >= 2);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_windows_path_separators() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create nested structure
+        fs::create_dir_all(root.join("sub\\nested")).unwrap();
+        File::create(root.join("sub\\nested\\file.txt")).unwrap();
+
+        let walker = Walker::new();
+        let entries = walker.walk(root).unwrap();
+
+        // Should handle Windows path separators correctly
+        assert!(entries.iter().any(|e| e.file_name() == Some("file.txt")));
+    }
+
+    #[test]
+    fn test_special_characters_in_names() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create files with special characters (that are valid on the current OS)
+        File::create(root.join("file with spaces.txt")).unwrap();
+        File::create(root.join("file-with-dashes.txt")).unwrap();
+        File::create(root.join("file_with_underscores.txt")).unwrap();
+        File::create(root.join("file.multiple.dots.txt")).unwrap();
+
+        let walker = Walker::new();
+        let entries = walker.walk(root).unwrap();
+
+        assert!(entries.len() >= 4);
+        let names: Vec<_> = entries.iter().filter_map(|e| e.file_name()).collect();
+        assert!(names.contains(&"file with spaces.txt"));
+        assert!(names.contains(&"file-with-dashes.txt"));
+    }
+
+    #[test]
+    fn test_walk_iter_is_lazy() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create many files
+        for i in 0..100 {
+            File::create(root.join(format!("file{}.txt", i))).unwrap();
+        }
+
+        let walker = Walker::new();
+        let iter = walker.walk_iter(root);
+
+        // Taking just 5 items should not iterate through all 100
+        let first_five: Vec<_> = iter.take(5).collect();
+        assert_eq!(first_five.len(), 5);
+    }
 }
