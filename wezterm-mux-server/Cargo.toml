@@ -8,9 +8,15 @@ publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["rustls"]
+# Pure-Rust TLS using rustls (recommended)
+rustls = ["dep:async_rustls", "dep:rustls", "dep:rustls-pemfile"]
+# Legacy OpenSSL-based TLS (deprecated)
+openssl = ["dep:async_ossl", "dep:openssl"]
+
 [dependencies]
 anyhow.workspace = true
-async_ossl.workspace = true
 clap.workspace = true
 config.workspace = true
 env-bootstrap.workspace = true
@@ -18,7 +24,6 @@ libc.workspace = true
 log.workspace = true
 mux.workspace = true
 mlua.workspace = true
-openssl.workspace = true
 portable-pty = { workspace=true, features = ["serde_support"]}
 promise.workspace = true
 umask.workspace = true
@@ -26,6 +31,15 @@ wezterm-blob-leases = {workspace=true, features=["simple_tempdir"]}
 wezterm-mux-server-impl.workspace = true
 wezterm-gui-subcommands.workspace = true
 wezterm-term.workspace = true
+
+# Pure-Rust TLS (rustls feature)
+async_rustls = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+rustls-pemfile = { workspace = true, optional = true }
+
+# Legacy OpenSSL TLS (openssl feature)
+async_ossl = { workspace = true, optional = true }
+openssl = { workspace = true, optional = true }
 
 [target."cfg(windows)".dependencies]
 winapi = { workspace=true, features = [ "winuser" ]}

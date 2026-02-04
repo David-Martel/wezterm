@@ -305,6 +305,10 @@ fn terminate_with_error(err: anyhow::Error) -> ! {
     std::process::exit(1);
 }
 
+// TLS backend selection via features
+#[cfg(feature = "rustls")]
+mod tls;
+#[cfg(feature = "openssl")]
 mod ossl;
 
 pub fn spawn_listener() -> anyhow::Result<()> {
@@ -318,6 +322,10 @@ pub fn spawn_listener() -> anyhow::Result<()> {
     }
 
     for tls_server in &config.tls_servers {
+        #[cfg(feature = "rustls")]
+        tls::spawn_tls_listener(tls_server)?;
+
+        #[cfg(all(feature = "openssl", not(feature = "rustls")))]
         ossl::spawn_tls_listener(tls_server)?;
     }
 

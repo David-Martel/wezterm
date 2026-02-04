@@ -1,7 +1,6 @@
 use crate::domain::{ClientDomain, ClientDomainConfig};
 use crate::pane::ClientPane;
 use anyhow::{anyhow, bail, Context};
-use async_ossl::AsyncSslStream;
 use async_trait::async_trait;
 use codec::*;
 use config::{configuration, SshDomain, TlsDomainClient, UnixDomain, UnixTarget};
@@ -13,7 +12,13 @@ use mux::domain::DomainId;
 use mux::pane::PaneId;
 use mux::ssh::ssh_connect_with_ui;
 use mux::Mux;
+
+// TLS backend imports - feature-gated
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
+use async_ossl::AsyncSslStream;
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod};
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
 use openssl::x509::X509;
 use portable_pty::Child;
 use smol::channel::{bounded, unbounded, Receiver, Sender};
@@ -29,7 +34,9 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, RawSocket};
-use std::path::{Path, PathBuf};
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
+use std::path::Path;
+use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use thiserror::Error;
@@ -813,6 +820,7 @@ impl Reconnectable {
         _initial: bool,
         ui: &mut ConnectionUI,
     ) -> anyhow::Result<()> {
+        #[cfg(feature = "openssl")]
         openssl::init();
 
         let remote_address = &tls_client.remote_address;
@@ -940,6 +948,107 @@ impl Reconnectable {
         Ok(())
     }
 
+    /// Connect using rustls (pure Rust TLS)
+    #[cfg(feature = "rustls")]
+    fn try_connect(
+        &mut self,
+        tls_client: &TlsDomainClient,
+        ui: &mut ConnectionUI,
+        remote_address: &str,
+        remote_host_name: &str,
+    ) -> anyhow::Result<Box<dyn AsyncReadAndWrite>> {
+        use async_rustls::{build_client_config_with_custom_verifier, TlsClientStream};
+        use rustls::pki_types::CertificateDer;
+
+        // Load client certificate
+        let cert_file = match tls_client.pem_cert.clone() {
+            Some(cert) => cert,
+            None => self.tls_creds_cert_path()?,
+        };
+        let cert_pem = std::fs::read(&cert_file).context(format!(
+            "Failed to read client certificate from {}",
+            cert_file.display()
+        ))?;
+
+        // Load private key
+        let key_file = match tls_client.pem_private_key.clone() {
+            Some(key) => key,
+            None => self.tls_creds_cert_path()?,
+        };
+        let key_pem = std::fs::read(&key_file).context(format!(
+            "Failed to read private key from {}",
+            key_file.display()
+        ))?;
+
+        // Load CA certificate for server verification
+        let ca_pem = if let Ok(ca_path) = self.tls_creds_ca_path() {
+            if ca_path.exists() {
+                Some(std::fs::read(&ca_path).context(format!(
+                    "Failed to read CA certificate from {}",
+                    ca_path.display()
+                ))?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Parse CA cert for custom verifier
+        let ca_cert = if let Some(ca_bytes) = &ca_pem {
+            let certs: Vec<CertificateDer<'static>> =
+                rustls_pemfile::certs(&mut std::io::Cursor::new(ca_bytes))
+                    .collect::<Result<Vec<_>, _>>()
+                    .context("Failed to parse CA certificate")?;
+            certs.into_iter().next()
+        } else {
+            None
+        };
+
+        // Build client config
+        let config = if let Some(ca_cert) = ca_cert {
+            build_client_config_with_custom_verifier(
+                Some(&cert_pem),
+                Some(&key_pem),
+                ca_cert,
+                tls_client.accept_invalid_hostnames,
+            )?
+        } else {
+            async_rustls::build_client_config(
+                Some(&cert_pem),
+                Some(&key_pem),
+                ca_pem.as_deref(),
+                &[],
+            )?
+        };
+
+        ui.output_str(&format!("Connecting to {} using TLS (rustls)\n", remote_address));
+        let stream = TcpStream::connect(remote_address)
+            .with_context(|| format!("connecting to {}", remote_address))?;
+        stream.set_nodelay(true)?;
+        stream.set_write_timeout(Some(tls_client.write_timeout))?;
+        stream.set_read_timeout(Some(tls_client.read_timeout))?;
+
+        let server_name = tls_client
+            .expected_cn
+            .as_deref()
+            .unwrap_or(remote_host_name);
+
+        let tls_stream = TlsClientStream::connect(stream, config, server_name)
+            .with_context(|| {
+                format!(
+                    "TLS connect to {} with server name {}",
+                    remote_address, server_name,
+                )
+            })?;
+
+        let stream = Box::new(Async::new(tls_stream.into_inner())?);
+        ui.output_str("TLS Connected!\n");
+        Ok(stream)
+    }
+
+    /// Connect using OpenSSL (legacy)
+    #[cfg(all(feature = "openssl", not(feature = "rustls")))]
     fn try_connect(
         &mut self,
         tls_client: &TlsDomainClient,
@@ -1009,7 +1118,7 @@ impl Reconnectable {
             .configure()?
             .verify_hostname(!tls_client.accept_invalid_hostnames);
 
-        ui.output_str(&format!("Connecting to {} using TLS\n", remote_address));
+        ui.output_str(&format!("Connecting to {} using TLS (OpenSSL)\n", remote_address));
         let stream = TcpStream::connect(remote_address)
             .with_context(|| format!("connecting to {}", remote_address))?;
         stream.set_nodelay(true)?;

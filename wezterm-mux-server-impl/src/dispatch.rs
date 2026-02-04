@@ -1,6 +1,5 @@
 use crate::sessionhandler::{PduSender, SessionHandler};
 use anyhow::Context;
-use async_ossl::AsyncSslStream;
 use codec::{DecodedPdu, Pdu};
 use futures::FutureExt;
 use mux::{Mux, MuxNotification};
@@ -8,12 +7,23 @@ use smol::prelude::*;
 use smol::Async;
 use wezterm_uds::UnixStream;
 
+// TLS stream imports - feature-gated
+#[cfg(feature = "rustls")]
+use async_rustls::AsyncRustlsStream;
+#[cfg(feature = "openssl")]
+use async_ossl::AsyncSslStream;
+
 #[cfg(unix)]
 pub trait AsRawDesc: std::os::unix::io::AsRawFd + std::os::fd::AsFd {}
 #[cfg(windows)]
 pub trait AsRawDesc: std::os::windows::io::AsRawSocket + std::os::windows::io::AsSocket {}
 
 impl AsRawDesc for UnixStream {}
+
+#[cfg(feature = "rustls")]
+impl AsRawDesc for AsyncRustlsStream {}
+
+#[cfg(feature = "openssl")]
 impl AsRawDesc for AsyncSslStream {}
 
 #[derive(Debug)]

@@ -7,11 +7,17 @@ publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["rustls"]
+# Pure-Rust TLS using rustls (recommended)
+rustls = ["dep:async_rustls", "dep:rustls", "dep:rustls-pemfile"]
+# Legacy OpenSSL-based TLS (deprecated)
+openssl = ["dep:async_ossl", "dep:openssl"]
+
 [dependencies]
 anyhow.workspace = true
 async-io.workspace = true
 async-trait.workspace = true
-async_ossl.workspace = true
 codec.workspace = true
 config.workspace = true
 filedescriptor.workspace = true
@@ -22,7 +28,6 @@ log.workspace = true
 lru.workspace = true
 metrics.workspace = true
 mux.workspace = true
-openssl.workspace = true
 parking_lot.workspace = true
 portable-pty = { workspace=true, features = ["serde_support"]}
 promise.workspace = true
@@ -38,6 +43,15 @@ wezterm-dynamic.workspace = true
 wezterm-ssh.workspace = true
 wezterm-term = { workspace=true, features=["use_serde"] }
 wezterm-uds.workspace = true
+
+# Pure-Rust TLS (rustls feature)
+async_rustls = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+rustls-pemfile = { workspace = true, optional = true }
+
+# Legacy OpenSSL TLS (openssl feature)
+async_ossl = { workspace = true, optional = true }
+openssl = { workspace = true, optional = true }
 
 [target."cfg(windows)".dependencies]
 winapi = { workspace=true, features = [

@@ -7,10 +7,16 @@ publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["rustls"]
+# Pure-Rust TLS using rustls (recommended)
+rustls = ["dep:async_rustls"]
+# Legacy OpenSSL-based TLS (deprecated)
+openssl = ["dep:async_ossl"]
+
 [dependencies]
 anyhow.workspace = true
 async-io.workspace = true
-async_ossl.workspace = true
 codec.workspace = true
 config.workspace = true
 dns-lookup.workspace = true
@@ -30,6 +36,12 @@ url.workspace = true
 wezterm-client.workspace = true
 wezterm-term = { workspace=true, features=["use_serde"] }
 wezterm-uds.workspace = true
+
+# Pure-Rust TLS (rustls feature)
+async_rustls = { workspace = true, optional = true }
+
+# Legacy OpenSSL TLS (openssl feature)
+async_ossl = { workspace = true, optional = true }
 
 [target."cfg(windows)".dependencies]
 winapi = { workspace=true, features = [ "winuser" ]}
