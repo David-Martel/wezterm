@@ -25,7 +25,7 @@ impl WatchEvent {
         }
     }
 
-    #[cfg(test)]
+    /// Get the event type as a string (primarily for testing and debugging)
     pub fn event_type(&self) -> &str {
         match self {
             WatchEvent::Created(_) => "created",

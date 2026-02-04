@@ -3,6 +3,7 @@ use crate::watcher::WatchEvent;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -12,14 +13,28 @@ pub enum OutputFormat {
     Summary,
 }
 
-impl OutputFormat {
-    pub fn from_str(s: &str) -> Option<Self> {
+/// Error type for OutputFormat parsing
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseOutputFormatError(String);
+
+impl std::fmt::Display for ParseOutputFormatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ParseOutputFormatError {}
+
+impl FromStr for OutputFormat {
+    type Err = ParseOutputFormatError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "json" => Some(Self::Json),
-            "pretty" => Some(Self::Pretty),
-            "events" => Some(Self::Events),
-            "summary" => Some(Self::Summary),
-            _ => None,
+            "json" => Ok(Self::Json),
+            "pretty" => Ok(Self::Pretty),
+            "events" => Ok(Self::Events),
+            "summary" => Ok(Self::Summary),
+            _ => Err(ParseOutputFormatError(format!("Unknown output format: {}", s))),
         }
     }
 }
@@ -325,28 +340,28 @@ mod tests {
 
     #[test]
     fn test_output_format_from_str_valid() {
-        assert_eq!(OutputFormat::from_str("json"), Some(OutputFormat::Json));
-        assert_eq!(OutputFormat::from_str("pretty"), Some(OutputFormat::Pretty));
-        assert_eq!(OutputFormat::from_str("events"), Some(OutputFormat::Events));
-        assert_eq!(OutputFormat::from_str("summary"), Some(OutputFormat::Summary));
+        assert_eq!(OutputFormat::from_str("json"), Ok(OutputFormat::Json));
+        assert_eq!(OutputFormat::from_str("pretty"), Ok(OutputFormat::Pretty));
+        assert_eq!(OutputFormat::from_str("events"), Ok(OutputFormat::Events));
+        assert_eq!(OutputFormat::from_str("summary"), Ok(OutputFormat::Summary));
     }
 
     #[test]
     fn test_output_format_from_str_case_insensitive() {
-        assert_eq!(OutputFormat::from_str("JSON"), Some(OutputFormat::Json));
-        assert_eq!(OutputFormat::from_str("Json"), Some(OutputFormat::Json));
-        assert_eq!(OutputFormat::from_str("PRETTY"), Some(OutputFormat::Pretty));
-        assert_eq!(OutputFormat::from_str("Pretty"), Some(OutputFormat::Pretty));
-        assert_eq!(OutputFormat::from_str("EVENTS"), Some(OutputFormat::Events));
-        assert_eq!(OutputFormat::from_str("SUMMARY"), Some(OutputFormat::Summary));
+        assert_eq!(OutputFormat::from_str("JSON"), Ok(OutputFormat::Json));
+        assert_eq!(OutputFormat::from_str("Json"), Ok(OutputFormat::Json));
+        assert_eq!(OutputFormat::from_str("PRETTY"), Ok(OutputFormat::Pretty));
+        assert_eq!(OutputFormat::from_str("Pretty"), Ok(OutputFormat::Pretty));
+        assert_eq!(OutputFormat::from_str("EVENTS"), Ok(OutputFormat::Events));
+        assert_eq!(OutputFormat::from_str("SUMMARY"), Ok(OutputFormat::Summary));
     }
 
     #[test]
     fn test_output_format_from_str_invalid() {
-        assert_eq!(OutputFormat::from_str("invalid"), None);
-        assert_eq!(OutputFormat::from_str(""), None);
-        assert_eq!(OutputFormat::from_str("xml"), None);
-        assert_eq!(OutputFormat::from_str("csv"), None);
+        assert!(OutputFormat::from_str("invalid").is_err());
+        assert!(OutputFormat::from_str("").is_err());
+        assert!(OutputFormat::from_str("xml").is_err());
+        assert!(OutputFormat::from_str("csv").is_err());
     }
 
     #[test]

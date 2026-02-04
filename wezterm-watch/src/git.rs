@@ -219,11 +219,9 @@ impl GitMonitor {
             .sorting(gix::revision::walk::Sorting::ByCommitTime(Default::default()))
             .all()
         {
-            for commit_result in walk.take(1000) {
-                // Limit to prevent slowdowns
-                if let Ok(commit) = commit_result {
-                    excluded_commits.insert(commit.id);
-                }
+            // Limit to prevent slowdowns
+            for commit in walk.take(1000).flatten() {
+                excluded_commits.insert(commit.id);
             }
         }
 
@@ -233,14 +231,12 @@ impl GitMonitor {
             .sorting(gix::revision::walk::Sorting::ByCommitTime(Default::default()))
             .all()
         {
-            for commit_result in walk.take(1000) {
-                if let Ok(commit) = commit_result {
-                    if !excluded_commits.contains(&commit.id) {
-                        count += 1;
-                    } else {
-                        // Once we hit an excluded commit, we've found merge base area
-                        break;
-                    }
+            for commit in walk.take(1000).flatten() {
+                if !excluded_commits.contains(&commit.id) {
+                    count += 1;
+                } else {
+                    // Once we hit an excluded commit, we've found merge base area
+                    break;
                 }
             }
         }

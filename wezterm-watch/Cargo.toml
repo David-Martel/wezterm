@@ -17,6 +17,10 @@ pkg-fmt = "zip"
 [package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
 pkg-fmt = "tgz"
 
+[lib]
+name = "wezterm_watch"
+path = "src/lib.rs"
+
 [[bin]]
 name = "wezterm-watch"
 path = "src/main.rs"

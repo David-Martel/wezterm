@@ -1,15 +1,12 @@
-mod git;
-mod output;
-mod watcher;
-
 use anyhow::{Context, Result};
 use clap::Parser;
-use git::GitMonitor;
-use output::{OutputFormat, OutputFormatter};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use watcher::FileWatcher;
+use wezterm_watch::git::GitMonitor;
+use wezterm_watch::output::{OutputFormat, OutputFormatter};
+use wezterm_watch::watcher::FileWatcher;
 
 #[derive(Parser, Debug)]
 #[command(name = "wezterm-watch")]
