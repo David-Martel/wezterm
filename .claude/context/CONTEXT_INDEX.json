@@ -1,0 +1,25 @@
+{
+  "contexts": [
+    {
+      "id": "ctx-wezterm-phase5-tests-20260204",
+      "file": "wezterm-context-20260204-phase5-tests.md",
+      "created": "2026-02-04T12:00:00Z",
+      "project": "wezterm",
+      "branch": "main",
+      "commit": "98903b704",
+      "agents_involved": ["rust-pro", "test-automator"],
+      "summary": "Phase 5 complete - async_rustls with 26 tests, fixed stub verification"
+    },
+    {
+      "id": "ctx-wezterm-gix-20260204",
+      "file": "wezterm-context-20260204-gix.md",
+      "created": "2026-02-04T10:00:00Z",
+      "project": "wezterm",
+      "branch": "main",
+      "commit": "5eeec2431",
+      "agents_involved": ["rust-pro"],
+      "summary": "gix migration - replaced git2/libgit2-sys with pure-Rust gix"
+    }
+  ],
+  "latest": "ctx-wezterm-phase5-tests-20260204"
+}
