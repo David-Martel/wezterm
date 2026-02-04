@@ -1,7 +1,32 @@
-//! Russh session wrapper for connection management.
+//! SSH session management using russh.
 //!
-//! This module provides the RusshSession type that wraps russh's async
-//! connection handling and bridges it to wezterm-ssh's synchronous API.
+//! This module provides [`RusshSession`], which manages the SSH connection
+//! lifecycle including authentication and channel creation.
+//!
+//! ## Connection Flow
+//!
+//! ```text
+//! 1. TCP connect     ──► TcpStream::connect(host:port)
+//! 2. SSH handshake   ──► client::connect_stream() with nodelay
+//! 3. Host verify     ──► Handler.check_server_key() → UI prompt
+//! 4. Authenticate    ──► password or publickey
+//! 5. Open channels   ──► session/SFTP channels
+//! ```
+//!
+//! ## Authentication Methods
+//!
+//! | Method | Function | Notes |
+//! |--------|----------|-------|
+//! | Password | [`authenticate_password`](RusshSession::authenticate_password) | Plain password auth |
+//! | Public Key | [`authenticate_publickey`](RusshSession::authenticate_publickey) | RSA, Ed25519, ECDSA |
+//!
+//! ## Configuration
+//!
+//! Default client configuration:
+//! - **Inactivity timeout**: 300 seconds
+//! - **Keepalive interval**: 60 seconds
+//! - **Keepalive max**: 3 missed before disconnect
+//! - **TCP nodelay**: Enabled for low latency
 
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
@@ -27,10 +52,27 @@ fn create_client_config() -> Arc<client::Config> {
     })
 }
 
-/// Wrapper around a russh client session.
+/// SSH session wrapper for russh.
 ///
-/// This type manages the underlying russh connection and provides
-/// methods for authentication and channel operations.
+/// Manages the SSH connection lifecycle and provides methods for:
+/// - Authentication (password, public key)
+/// - Channel creation (PTY, exec, SFTP)
+/// - Session disconnection
+///
+/// ## Example
+///
+/// ```ignore
+/// // Connect to server
+/// let session = RusshSession::connect("example.com", 22, event_tx).await?;
+///
+/// // Authenticate
+/// session.authenticate_password("user", "password").await?;
+///
+/// // Open channel for shell
+/// let mut channel = session.open_channel().await?;
+/// channel.request_pty("xterm-256color", size).await?;
+/// channel.request_shell().await?;
+/// ```
 pub struct RusshSession {
     /// The russh client handle
     handle: Handle<WezTermHandler>,

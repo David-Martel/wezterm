@@ -1,7 +1,32 @@
-//! Russh channel wrapper for PTY operations.
+//! SSH channel wrapper for PTY and command execution.
 //!
-//! This module provides the RusshChannel type that wraps russh's async
-//! channel operations for PTY, shell, and command execution.
+//! This module provides [`RusshChannel`], which wraps russh's async channel
+//! operations for terminal sessions and command execution.
+//!
+//! ## Channel Lifecycle
+//!
+//! ```text
+//! 1. Open channel      ──► channel_open_session()
+//! 2. Request PTY       ──► request_pty("xterm-256color", size)
+//! 3. Start shell/exec  ──► request_shell() or exec("command")
+//! 4. Data transfer     ──► read()/write() bidirectional I/O
+//! 5. Close             ──► eof() + close()
+//! ```
+//!
+//! ## Supported Operations
+//!
+//! | Operation | Method | Description |
+//! |-----------|--------|-------------|
+//! | PTY | [`request_pty`](RusshChannel::request_pty) | Allocate pseudo-terminal |
+//! | Shell | [`request_shell`](RusshChannel::request_shell) | Start interactive shell |
+//! | Exec | [`exec`](RusshChannel::exec) | Execute single command |
+//! | Resize | [`resize`](RusshChannel::resize) | Change terminal dimensions |
+//! | Signal | [`send_signal`](RusshChannel::send_signal) | Send signal (TERM, INT, etc.) |
+//!
+//! ## Data Flow
+//!
+//! Data is transferred via async I/O internally but exposed through sync wrappers
+//! in the parent module via `block_on()`.
 
 use portable_pty::PtySize;
 use russh::{Channel, ChannelMsg, Sig};

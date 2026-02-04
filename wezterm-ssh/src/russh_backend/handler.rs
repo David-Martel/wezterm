@@ -1,7 +1,32 @@
 //! SSH client handler for russh.
 //!
-//! This module implements the `russh::client::Handler` trait to handle
+//! This module implements the [`russh::client::Handler`] trait to handle
 //! SSH protocol events like host key verification and authentication banners.
+//!
+//! ## Event Flow
+//!
+//! ```text
+//! russh server message ──► check_server_key() ──► SessionEvent::HostVerify
+//!                                                        │
+//!                                                        ▼
+//!                                                 WezTerm UI prompt
+//!                                                        │
+//!                                                        ▼
+//!                                                  User response
+//!                                                        │
+//!                                                        ▼
+//!                                              ◄─────────┘
+//!                                              accept/reject
+//! ```
+//!
+//! ## Host Key Verification
+//!
+//! When connecting to a server, the handler:
+//! 1. Receives the server's public key
+//! 2. Computes SHA256 fingerprint (base64 encoded)
+//! 3. Sends verification request to WezTerm UI via event channel
+//! 4. Waits for user approval/rejection
+//! 5. Returns result to russh to continue or abort connection
 
 use russh::keys::ssh_key::PublicKey;
 use smol::channel::Sender;

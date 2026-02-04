@@ -1,7 +1,61 @@
-//! Russh SFTP implementation.
+//! SFTP implementation using russh-sftp.
 //!
-//! This module provides SFTP support via the russh-sftp crate,
-//! bridging the async API to wezterm-ssh's synchronous interface.
+//! This module provides [`RusshSftp`], [`RusshFile`], and [`RusshDir`] types
+//! for secure file transfer operations over SSH.
+//!
+//! ## Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │                     wezterm-ssh (sync)                       │
+//! │                           │                                  │
+//! │                      block_on()                              │
+//! │                           ▼                                  │
+//! │  ┌──────────────────────────────────────────────────────┐   │
+//! │  │                   RusshSftp                           │   │
+//! │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐      │   │
+//! │  │  │ RusshFile  │  │ RusshDir   │  │  metadata  │      │   │
+//! │  │  │ read/write │  │  iteration │  │  symlinks  │      │   │
+//! │  │  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘      │   │
+//! │  │        └───────────────┴───────────────┘              │   │
+//! │  │                        │                              │   │
+//! │  │                 SftpSession                           │   │
+//! │  │                   (async)                             │   │
+//! │  └──────────────────────────────────────────────────────┘   │
+//! │                           │                                  │
+//! │                    SSH Channel                               │
+//! │                           │                                  │
+//! │                    ───────┴───────                           │
+//! │                      Network I/O                             │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! ## Supported Operations
+//!
+//! | Category | Operations |
+//! |----------|------------|
+//! | **Files** | open, read, write, seek, flush, close |
+//! | **Directories** | create_dir, remove_dir, read_dir, open_dir |
+//! | **Metadata** | metadata, symlink_metadata, set_metadata |
+//! | **Links** | symlink, read_link, canonicalize |
+//! | **Management** | unlink, rename |
+//!
+//! ## Type Conversions
+//!
+//! This module handles conversions between wezterm-ssh and russh-sftp types:
+//!
+//! | wezterm-ssh | russh-sftp |
+//! |-------------|------------|
+//! | `Metadata` | `FileAttributes` |
+//! | `OpenOptions` | `OpenFlags` |
+//! | `FileType` | Unix mode bits |
+//! | `FilePermissions` | Unix permission bits |
+//!
+//! ## Thread Safety
+//!
+//! All types use `Arc<Mutex<T>>` internally and are safe to share across
+//! threads. The underlying SFTP session is accessed through async locks
+//! to prevent concurrent modification.
 
 use anyhow::Context;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -15,10 +69,25 @@ use tokio::sync::Mutex;
 use crate::sftp::types::{Metadata, OpenOptions, RenameOptions};
 use crate::sftp::{SftpChannelError, SftpChannelResult};
 
-/// Russh SFTP session wrapper.
+/// SFTP session wrapper for russh.
 ///
-/// Wraps the async `russh_sftp::client::SftpSession` and provides
-/// synchronous methods via `block_on`.
+/// Provides file transfer operations over an SSH channel using the SFTP
+/// protocol (SSH File Transfer Protocol). All operations are async internally
+/// but exposed via `block_on()` for wezterm-ssh's sync interface.
+///
+/// ## Example
+///
+/// ```ignore
+/// // Create SFTP session from SSH channel
+/// let sftp = RusshSftp::new(channel).await?;
+///
+/// // Read directory
+/// let entries = sftp.read_dir("/home/user".into()).await?;
+///
+/// // Open file for reading
+/// let opts = OpenOptions { read: true, ..Default::default() };
+/// let file = sftp.open("/home/user/file.txt".into(), opts).await?;
+/// ```
 pub struct RusshSftp {
     session: Arc<Mutex<SftpSession>>,
 }
@@ -268,7 +337,21 @@ impl RusshSftp {
     }
 }
 
-/// Russh SFTP file wrapper.
+/// SFTP file handle wrapper.
+///
+/// Provides async read/write/seek operations on a remote file.
+/// The file is automatically closed when dropped if not explicitly closed.
+///
+/// ## Operations
+///
+/// | Method | Description |
+/// |--------|-------------|
+/// | [`read`](Self::read) | Read bytes from current position |
+/// | [`write`](Self::write) | Write bytes at current position |
+/// | [`seek`](Self::seek) | Change file position |
+/// | [`flush`](Self::flush) | Ensure data is written to server |
+/// | [`metadata`](Self::metadata) | Get file attributes |
+/// | [`close`](Self::close) | Explicitly close file handle |
 pub struct RusshFile {
     inner: Arc<Mutex<Option<russh_sftp::client::fs::File>>>,
 }
@@ -395,7 +478,12 @@ impl RusshFile {
     }
 }
 
-/// Russh SFTP directory iterator wrapper.
+/// SFTP directory iterator wrapper.
+///
+/// Provides iteration over directory entries. All entries are fetched
+/// upfront since russh-sftp doesn't support incremental iteration.
+///
+/// Entries named `.` and `..` are automatically filtered out.
 pub struct RusshDir {
     entries: Arc<Mutex<std::vec::IntoIter<(Utf8PathBuf, Metadata)>>>,
 }
@@ -408,7 +496,12 @@ impl RusshDir {
     }
 }
 
-/// Convert OpenOptions to russh-sftp OpenFlags.
+/// Convert wezterm [`OpenOptions`] to russh-sftp [`OpenFlags`].
+///
+/// Maps the high-level open options to SFTP protocol flags:
+/// - `read: true` → `OpenFlags::READ`
+/// - `write: WriteMode::Write` → `OpenFlags::WRITE | CREATE | TRUNCATE`
+/// - `write: WriteMode::Append` → `OpenFlags::WRITE | APPEND`
 fn convert_open_options(opts: &OpenOptions) -> OpenFlags {
     use crate::sftp::types::{OpenFileType, WriteMode};
 
@@ -442,7 +535,13 @@ fn convert_open_options(opts: &OpenOptions) -> OpenFlags {
     flags
 }
 
-/// Convert russh-sftp FileAttributes to wezterm Metadata.
+/// Convert russh-sftp [`FileAttributes`] to wezterm [`Metadata`].
+///
+/// Handles the mapping of:
+/// - File type extraction from Unix mode bits
+/// - Permission bits to `FilePermissions`
+/// - Timestamp conversion (u32 → u64)
+/// - Optional uid/gid preservation
 fn convert_file_attributes(attrs: FileAttributes) -> Metadata {
     use crate::sftp::types::{FilePermissions, FileType};
 
@@ -467,7 +566,13 @@ fn convert_file_attributes(attrs: FileAttributes) -> Metadata {
     }
 }
 
-/// Convert wezterm Metadata to russh-sftp FileAttributes.
+/// Convert wezterm [`Metadata`] to russh-sftp [`FileAttributes`].
+///
+/// Reconstructs Unix mode by combining:
+/// - File type bits from `metadata.ty.to_unix_mode()`
+/// - Permission bits from `metadata.permissions.to_unix_mode()`
+///
+/// Timestamps are converted from u64 to u32 (safe for dates before 2038).
 fn convert_metadata_to_attrs(metadata: Metadata) -> FileAttributes {
     // Combine file type bits with permission bits
     let permissions = metadata.permissions.map(|p| {
