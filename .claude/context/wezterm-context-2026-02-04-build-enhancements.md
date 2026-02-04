@@ -16,7 +16,7 @@ Comprehensive enhancement of WezTerm custom utilities build framework with Windo
 |----------|-------|
 | **Project** | WezTerm Terminal Emulator (Personal Fork) |
 | **Branch** | main |
-| **Commit** | dbe154194 |
+| **Commit** | 801eb8067 |
 | **Type** | Rust workspace (60+ crates) |
 | **Platform** | Windows/WSL primary |
 
@@ -31,7 +31,7 @@ Comprehensive enhancement of WezTerm custom utilities build framework with Windo
 | rust-pro | Shell detection | `wezterm-fs-explorer/src/shell.rs` | Complete |
 | rust-pro | Fuzzy search (nucleo) | `wezterm-fs-explorer/src/search.rs` | Complete |
 | rust-pro | cargo-binstall integration | `*/Cargo.toml`, `release.toml`, `cliff.toml` | Complete |
-| rust-pro | Justfile enhancement | `Justfile` (32 targets) | Complete |
+| rust-pro | Justfile enhancement | `Justfile` (49 targets) | Complete |
 | rust-pro | Cargo config optimization | `.cargo/config.toml` | Complete |
 | code-reviewer | Microsoft Rust Guidelines review | All new modules | Complete |
 | deployment-engineer | Windows CI workflow | `.github/workflows/windows-ci.yml` | Complete |
@@ -57,7 +57,7 @@ wezterm-fs-explorer/src/
 
 ### 3. Build Framework Enhancement
 
-**Justfile Targets (32 total):**
+**Justfile Targets (49 total):**
 - `build-timings`, `build-timings-release` - Build profiling
 - `coverage`, `coverage-open` - llvm-cov integration
 - `test-archive`, `test-from-archive` - nextest caching
@@ -100,9 +100,19 @@ wezterm-fs-explorer/src/
 - `wezterm-fs-explorer/src/path_utils.rs`
 - `wezterm-fs-explorer/src/shell.rs`
 - `wezterm-fs-explorer/src/search.rs`
+- `wezterm-fs-explorer/src/lib.rs`
+- `wezterm-fs-explorer/examples/path_translation.rs`
+- `wezterm-fs-explorer/examples/shell_demo.rs`
 - `release.toml`
 - `cliff.toml`
 - `.github/workflows/windows-ci.yml`
+- `tools/Build-Integration.ps1` (1,280 lines)
+- `tools/Invoke-Gix.ps1` (gix CLI wrapper)
+- `tools/CargoTools/` (PowerShell module)
+- `tools/README.md`
+- `BUILD_ENHANCEMENTS.md`
+- `BUILD_QUICK_REFERENCE.md`
+- `JUSTFILE_ENHANCEMENTS.md`
 
 ### Modified Files
 - `wezterm-fs-explorer/Cargo.toml` (binstall, nucleo, uds_windows)
@@ -110,7 +120,7 @@ wezterm-fs-explorer/src/
 - `wezterm-fs-explorer/src/git_status.rs` (gix migration)
 - `wezterm-watch/src/git.rs` (gix migration)
 - `.cargo/config.toml` (LTO, aliases)
-- `Justfile` (32 targets)
+- `Justfile` (49 targets)
 - `build-all.ps1` (release features, encoding fix)
 
 ---
@@ -206,11 +216,12 @@ just release-dry-run
 
 | Check | Status |
 |-------|--------|
-| Git state | Clean (uncommitted changes present) |
+| Git state | Clean (all changes committed and pushed) |
 | Tests pass | Yes (182/182) |
 | Clippy clean | Yes (dead-code only) |
 | Build succeeds | Yes |
 | Schema valid | Yes |
+| Documentation | Updated |
 
 ---
 
