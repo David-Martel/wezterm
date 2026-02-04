@@ -10,6 +10,24 @@ pub(crate) enum SftpWrap {
 
     #[cfg(feature = "libssh-rs")]
     LibSsh(libssh_rs::Sftp),
+
+    #[cfg(feature = "russh")]
+    Russh(RusshSftpPlaceholder),
+}
+
+/// Placeholder for russh SFTP implementation.
+///
+/// Full SFTP support via russh-sftp will be added in a future task.
+#[cfg(feature = "russh")]
+pub(crate) struct RusshSftpPlaceholder;
+
+#[cfg(feature = "russh")]
+fn russh_sftp_not_implemented<T>() -> SftpChannelResult<T> {
+    use crate::sftp::SftpChannelError;
+    Err(SftpChannelError::from(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "SFTP not yet implemented for russh backend",
+    )))
 }
 
 #[cfg(feature = "ssh2")]
@@ -55,6 +73,12 @@ impl SftpWrap {
                 )?;
                 Ok(FileWrap::LibSsh(file))
             }
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = (filename, opts);
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -65,6 +89,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.symlink(path.as_str(), target.as_str())?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = (path, target);
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -75,6 +105,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.read_link(filename.as_str())?.into()),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -85,6 +121,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.canonicalize(filename.as_str())?.into()),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -95,6 +137,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.remove_file(filename.as_str())?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -105,6 +153,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.remove_dir(filename.as_str())?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -118,6 +172,12 @@ impl SftpWrap {
                 use std::convert::TryInto;
                 Ok(sftp.create_dir(filename.as_str(), mode.try_into().unwrap())?)
             }
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = (filename, mode);
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -125,7 +185,8 @@ impl SftpWrap {
         &self,
         src: &Utf8Path,
         dest: &Utf8Path,
-        #[cfg_attr(not(feature = "ssh2"), allow(unused_variables))] opts: RenameOptions,
+        #[cfg_attr(not(any(feature = "ssh2", feature = "russh")), allow(unused_variables))]
+        opts: RenameOptions,
     ) -> SftpChannelResult<()> {
         match self {
             #[cfg(feature = "ssh2")]
@@ -135,6 +196,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.rename(src.as_str(), dest.as_str())?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = (src, dest, opts);
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -147,6 +214,12 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp
                 .symlink_metadata(filename.as_str())
                 .map(Metadata::from)?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -157,6 +230,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.metadata(filename.as_str()).map(Metadata::from)?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -170,6 +249,12 @@ impl SftpWrap {
                 let attr: libssh_rs::SetAttributes = metadata.into();
                 Ok(sftp.set_metadata(filename.as_str(), &attr)?)
             }
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = (filename, metadata);
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -180,6 +265,12 @@ impl SftpWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(sftp) => Ok(sftp.open_dir(filename.as_str()).map(DirWrap::LibSsh)?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
+            }
         }
     }
 
@@ -212,6 +303,12 @@ impl SftpWrap {
                 }
 
                 Ok(mapped_entries)
+            }
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_) => {
+                let _ = filename;
+                russh_sftp_not_implemented()
             }
         }
     }

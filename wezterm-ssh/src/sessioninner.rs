@@ -441,6 +441,12 @@ impl SessionInner {
                 }
                 Ok(())
             }
+            #[cfg(feature = "russh")]
+            SessionWrap::Russh(_sess) => {
+                // Russh handles keepalive internally via the config
+                // (keepalive_interval and keepalive_max settings)
+                Ok(())
+            }
         }
     }
 
@@ -1058,6 +1064,15 @@ impl SessionInner {
             SessionWrap::LibSsh(sess) => {
                 if sess.sftp.is_none() {
                     sess.sftp = Some(SftpWrap::LibSsh(sess.sess.sftp()?));
+                }
+                Ok(sess.sftp.as_mut().expect("sftp should have been set above"))
+            }
+
+            #[cfg(feature = "russh")]
+            SessionWrap::Russh(sess) => {
+                if sess.sftp.is_none() {
+                    // SFTP not yet implemented for russh backend
+                    sess.sftp = Some(SftpWrap::Russh(crate::sftpwrap::RusshSftpPlaceholder));
                 }
                 Ok(sess.sftp.as_mut().expect("sftp should have been set above"))
             }

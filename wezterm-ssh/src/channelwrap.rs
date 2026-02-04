@@ -1,12 +1,18 @@
 use crate::pty::{NewPty, ResizePty};
 use portable_pty::ExitStatus;
 
+#[cfg(feature = "russh")]
+use crate::russh_backend::RusshChannel;
+
 pub(crate) enum ChannelWrap {
     #[cfg(feature = "ssh2")]
     Ssh2(ssh2::Channel),
 
     #[cfg(feature = "libssh-rs")]
     LibSsh(libssh_rs::Channel),
+
+    #[cfg(feature = "russh")]
+    Russh(RusshChannel),
 }
 
 #[cfg(feature = "ssh2")]
@@ -52,6 +58,17 @@ impl ChannelWrap {
                 }
                 None
             }
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => {
+                if let Some(signal) = chan.exit_signal() {
+                    Some(ExitStatus::with_signal(signal))
+                } else if let Some(status) = chan.exit_status() {
+                    Some(ExitStatus::with_exit_code(status))
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -66,6 +83,13 @@ impl ChannelWrap {
                 1 => Box::new(chan.stderr()),
                 _ => panic!("wanted reader for idx={}", idx),
             },
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_chan) => {
+                // Russh channels use async read/write, need separate handling
+                // This will be replaced by RusshChannelStream
+                panic!("russh reader() not implemented - use RusshChannelStream instead")
+            }
         }
     }
 
@@ -76,6 +100,13 @@ impl ChannelWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(chan) => Box::new(chan.stdin()),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(_chan) => {
+                // Russh channels use async read/write, need separate handling
+                // This will be replaced by RusshChannelStream
+                panic!("russh writer() not implemented - use RusshChannelStream instead")
+            }
         }
     }
 
@@ -89,6 +120,11 @@ impl ChannelWrap {
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(chan) => {
                 let _ = chan.close();
+            }
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => {
+                let _ = crate::russh_backend::block_on(chan.close());
             }
         }
     }
@@ -113,6 +149,11 @@ impl ChannelWrap {
                 newpty.size.cols.into(),
                 newpty.size.rows.into(),
             )?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => {
+                crate::russh_backend::block_on(chan.request_pty(&newpty.term, newpty.size))
+            }
         }
     }
 
@@ -123,6 +164,9 @@ impl ChannelWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(chan) => Ok(chan.request_env(name, value)?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => crate::russh_backend::block_on(chan.request_env(name, value)),
         }
     }
 
@@ -133,6 +177,9 @@ impl ChannelWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(chan) => Ok(chan.request_exec(command_line)?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => crate::russh_backend::block_on(chan.exec(command_line)),
         }
     }
 
@@ -143,6 +190,9 @@ impl ChannelWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(chan) => Ok(chan.request_shell()?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => crate::russh_backend::block_on(chan.request_shell()),
         }
     }
 
@@ -158,6 +208,11 @@ impl ChannelWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(chan) => Ok(chan.request_auth_agent()?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => {
+                crate::russh_backend::block_on(chan.request_agent_forwarding())
+            }
         }
     }
 
@@ -175,12 +230,19 @@ impl ChannelWrap {
             Self::LibSsh(chan) => {
                 Ok(chan.change_pty_size(resize.size.cols.into(), resize.size.rows.into())?)
             }
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => crate::russh_backend::block_on(chan.resize(resize.size)),
         }
     }
 
     pub fn send_signal(
         &mut self,
-        #[cfg_attr(not(feature = "libssh-rs"), allow(unused_variables))] signame: &str,
+        #[cfg_attr(
+            not(any(feature = "libssh-rs", feature = "russh")),
+            allow(unused_variables)
+        )]
+        signame: &str,
     ) -> anyhow::Result<()> {
         match self {
             #[cfg(feature = "ssh2")]
@@ -188,6 +250,9 @@ impl ChannelWrap {
 
             #[cfg(feature = "libssh-rs")]
             Self::LibSsh(chan) => Ok(chan.request_send_signal(signame)?),
+
+            #[cfg(feature = "russh")]
+            Self::Russh(chan) => crate::russh_backend::block_on(chan.send_signal(signame)),
         }
     }
 }
