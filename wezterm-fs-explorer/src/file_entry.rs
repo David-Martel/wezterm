@@ -137,3 +137,272 @@ fn triplet(mode: u32, read: u32, write: u32, execute: u32) -> String {
         if mode & execute != 0 { "x" } else { "-" }
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::{self, File};
+    use tempfile::TempDir;
+
+    // ============================================
+    // FileType Tests
+    // ============================================
+
+    #[test]
+    fn test_file_type_equality() {
+        assert_eq!(FileType::File, FileType::File);
+        assert_eq!(FileType::Directory, FileType::Directory);
+        assert_eq!(FileType::Symlink, FileType::Symlink);
+        assert_ne!(FileType::File, FileType::Directory);
+    }
+
+    #[test]
+    fn test_file_type_clone() {
+        let file_type = FileType::Directory;
+        let cloned = file_type.clone();
+        assert_eq!(file_type, cloned);
+    }
+
+    // ============================================
+    // FileEntry::from_path Tests
+    // ============================================
+
+    #[test]
+    fn test_from_path_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+
+        assert_eq!(entry.name, "test.txt");
+        assert_eq!(entry.file_type, FileType::File);
+        assert!(!entry.is_hidden);
+    }
+
+    #[test]
+    fn test_from_path_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path().join("subdir");
+        fs::create_dir(&dir_path).unwrap();
+
+        let entry = FileEntry::from_path(&dir_path).unwrap();
+
+        assert_eq!(entry.name, "subdir");
+        assert_eq!(entry.file_type, FileType::Directory);
+        assert!(!entry.is_hidden);
+    }
+
+    #[test]
+    fn test_from_path_hidden_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join(".hidden");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+
+        assert_eq!(entry.name, ".hidden");
+        assert!(entry.is_hidden);
+    }
+
+    #[test]
+    fn test_from_path_nonexistent() {
+        let result = FileEntry::from_path(Path::new("/nonexistent/path/file.txt"));
+        assert!(result.is_err());
+    }
+
+    // ============================================
+    // FileEntry::read_directory Tests
+    // ============================================
+
+    #[test]
+    fn test_read_directory_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let entries = FileEntry::read_directory(temp_dir.path(), false).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_read_directory_with_files() {
+        let temp_dir = TempDir::new().unwrap();
+        File::create(temp_dir.path().join("file1.txt")).unwrap();
+        File::create(temp_dir.path().join("file2.txt")).unwrap();
+
+        let entries = FileEntry::read_directory(temp_dir.path(), false).unwrap();
+
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_read_directory_hidden_files_hidden() {
+        let temp_dir = TempDir::new().unwrap();
+        File::create(temp_dir.path().join("visible.txt")).unwrap();
+        File::create(temp_dir.path().join(".hidden")).unwrap();
+
+        let entries = FileEntry::read_directory(temp_dir.path(), false).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "visible.txt");
+    }
+
+    #[test]
+    fn test_read_directory_hidden_files_shown() {
+        let temp_dir = TempDir::new().unwrap();
+        File::create(temp_dir.path().join("visible.txt")).unwrap();
+        File::create(temp_dir.path().join(".hidden")).unwrap();
+
+        let entries = FileEntry::read_directory(temp_dir.path(), true).unwrap();
+
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_read_directory_sorting_dirs_first() {
+        let temp_dir = TempDir::new().unwrap();
+        File::create(temp_dir.path().join("aaa_file.txt")).unwrap();
+        fs::create_dir(temp_dir.path().join("zzz_dir")).unwrap();
+
+        let entries = FileEntry::read_directory(temp_dir.path(), false).unwrap();
+
+        // Directory should come first even though it's alphabetically later
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "zzz_dir");
+        assert_eq!(entries[0].file_type, FileType::Directory);
+        assert_eq!(entries[1].name, "aaa_file.txt");
+    }
+
+    #[test]
+    fn test_read_directory_sorting_alphabetical() {
+        let temp_dir = TempDir::new().unwrap();
+        File::create(temp_dir.path().join("charlie.txt")).unwrap();
+        File::create(temp_dir.path().join("alpha.txt")).unwrap();
+        File::create(temp_dir.path().join("bravo.txt")).unwrap();
+
+        let entries = FileEntry::read_directory(temp_dir.path(), false).unwrap();
+
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].name, "alpha.txt");
+        assert_eq!(entries[1].name, "bravo.txt");
+        assert_eq!(entries[2].name, "charlie.txt");
+    }
+
+    // ============================================
+    // FileEntry::extension Tests
+    // ============================================
+
+    #[test]
+    fn test_extension_single() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.rs");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        assert_eq!(entry.extension(), Some("rs".to_string()));
+    }
+
+    #[test]
+    fn test_extension_double() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.tar.gz");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        // Only gets last extension
+        assert_eq!(entry.extension(), Some("gz".to_string()));
+    }
+
+    #[test]
+    fn test_extension_none() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("README");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        assert_eq!(entry.extension(), None);
+    }
+
+    #[test]
+    fn test_extension_dotfile() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join(".gitignore");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        // .gitignore is not treated as extension in std::path
+        assert_eq!(entry.extension(), None);
+    }
+
+    #[test]
+    fn test_extension_uppercase() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("photo.JPG");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        // Should be lowercase
+        assert_eq!(entry.extension(), Some("jpg".to_string()));
+    }
+
+    // ============================================
+    // FileEntry::format_size Tests
+    // ============================================
+
+    #[test]
+    fn test_format_size_bytes() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("small.txt");
+        fs::write(&file_path, "hello").unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        assert_eq!(entry.format_size(), "5 B");
+    }
+
+    #[test]
+    fn test_format_size_kilobytes() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("medium.txt");
+        // Create a ~2KB file
+        let content = "x".repeat(2048);
+        fs::write(&file_path, content).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        assert!(entry.format_size().contains("KB"));
+    }
+
+    // ============================================
+    // FileEntry::format_modified Tests
+    // ============================================
+
+    #[test]
+    fn test_format_modified_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        let formatted = entry.format_modified();
+
+        // Should be in YYYY-MM-DD HH:MM:SS format
+        assert!(formatted.contains("-"));
+        assert!(formatted.contains(":"));
+        assert_eq!(formatted.len(), 19); // "2024-01-15 10:30:45"
+    }
+
+    // ============================================
+    // FileEntry Clone Tests
+    // ============================================
+
+    #[test]
+    fn test_file_entry_clone() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        File::create(&file_path).unwrap();
+
+        let entry = FileEntry::from_path(&file_path).unwrap();
+        let cloned = entry.clone();
+
+        assert_eq!(entry.name, cloned.name);
+        assert_eq!(entry.path, cloned.path);
+        assert_eq!(entry.file_type, cloned.file_type);
+    }
+}

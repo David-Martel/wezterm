@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
+use crate::ipc;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params")]
 pub enum IpcMessage {
@@ -71,49 +73,21 @@ impl IpcClient {
     }
 
     pub async fn connect(&mut self) -> Result<()> {
-        #[cfg(windows)]
-        {
-            use std::io::ErrorKind;
-            use tokio::net::windows::named_pipe::ClientOptions;
-
-            match ClientOptions::new().open(&self.pipe_path) {
-                Ok(_pipe) => {
-                    self.connected = true;
-                    log::info!("Connected to IPC daemon at {}", self.pipe_path);
-                    Ok(())
-                }
-                Err(e) if e.kind() == ErrorKind::NotFound => {
-                    log::warn!(
-                        "IPC daemon not available at {} - running in standalone mode",
-                        self.pipe_path
-                    );
-                    self.connected = false;
-                    Ok(())
-                }
-                Err(e) => Err(e).context("Failed to connect to IPC daemon"),
+        match ipc::IpcClient::connect(&self.pipe_path).await {
+            Ok(_stream) => {
+                self.connected = true;
+                log::info!("Connected to IPC daemon at {}", self.pipe_path);
+                Ok(())
             }
-        }
-
-        #[cfg(not(windows))]
-        {
-            use tokio::net::UnixStream;
-
-            match UnixStream::connect(&self.pipe_path).await {
-                Ok(_stream) => {
-                    self.connected = true;
-                    log::info!("Connected to IPC daemon at {}", self.pipe_path);
-                    Ok(())
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    log::warn!(
-                        "IPC daemon not available at {} - running in standalone mode",
-                        self.pipe_path
-                    );
-                    self.connected = false;
-                    Ok(())
-                }
-                Err(e) => Err(e).context("Failed to connect to IPC daemon"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::warn!(
+                    "IPC daemon not available at {} - running in standalone mode",
+                    self.pipe_path
+                );
+                self.connected = false;
+                Ok(())
             }
+            Err(e) => Err(e).context("Failed to connect to IPC daemon"),
         }
     }
 
@@ -127,65 +101,30 @@ impl IpcClient {
             return Ok(());
         }
 
-        #[cfg(windows)]
-        {
-            use tokio::net::windows::named_pipe::ClientOptions;
+        let mut stream = ipc::IpcClient::connect(&self.pipe_path)
+            .await
+            .context("Failed to connect to IPC socket")?;
 
-            let mut pipe = ClientOptions::new()
-                .open(&self.pipe_path)
-                .context("Failed to open named pipe")?;
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: self.next_id,
+            method: match &message {
+                IpcMessage::OpenFile { .. } => "editor.open_file".to_string(),
+                IpcMessage::WatchDirectory { .. } => "watcher.watch_directory".to_string(),
+                IpcMessage::RefreshFile { .. } => "explorer.refresh_file".to_string(),
+                IpcMessage::Navigate { .. } => "explorer.navigate".to_string(),
+                IpcMessage::SelectionUpdate { .. } => "broadcast.selection_update".to_string(),
+            },
+            params: serde_json::to_value(&message)?,
+        };
 
-            let request = JsonRpcRequest {
-                jsonrpc: "2.0".to_string(),
-                id: self.next_id,
-                method: match &message {
-                    IpcMessage::OpenFile { .. } => "editor.open_file".to_string(),
-                    IpcMessage::WatchDirectory { .. } => "watcher.watch_directory".to_string(),
-                    IpcMessage::RefreshFile { .. } => "explorer.refresh_file".to_string(),
-                    IpcMessage::Navigate { .. } => "explorer.navigate".to_string(),
-                    IpcMessage::SelectionUpdate { .. } => "broadcast.selection_update".to_string(),
-                },
-                params: serde_json::to_value(&message)?,
-            };
+        self.next_id += 1;
 
-            self.next_id += 1;
+        let request_str = serde_json::to_string(&request)?;
+        stream.write_all(request_str.as_bytes()).await?;
+        stream.write_all(b"\n").await?;
 
-            let request_str = serde_json::to_string(&request)?;
-            pipe.write_all(request_str.as_bytes()).await?;
-            pipe.write_all(b"\n").await?;
-
-            log::debug!("Sent IPC message: {:?}", message);
-        }
-
-        #[cfg(not(windows))]
-        {
-            use tokio::net::UnixStream;
-
-            let mut stream = UnixStream::connect(&self.pipe_path)
-                .await
-                .context("Failed to connect to Unix socket")?;
-
-            let request = JsonRpcRequest {
-                jsonrpc: "2.0".to_string(),
-                id: self.next_id,
-                method: match &message {
-                    IpcMessage::OpenFile { .. } => "editor.open_file".to_string(),
-                    IpcMessage::WatchDirectory { .. } => "watcher.watch_directory".to_string(),
-                    IpcMessage::RefreshFile { .. } => "explorer.refresh_file".to_string(),
-                    IpcMessage::Navigate { .. } => "explorer.navigate".to_string(),
-                    IpcMessage::SelectionUpdate { .. } => "broadcast.selection_update".to_string(),
-                },
-                params: serde_json::to_value(&message)?,
-            };
-
-            self.next_id += 1;
-
-            let request_str = serde_json::to_string(&request)?;
-            stream.write_all(request_str.as_bytes()).await?;
-            stream.write_all(b"\n").await?;
-
-            log::debug!("Sent IPC message: {:?}", message);
-        }
+        log::debug!("Sent IPC message: {:?}", message);
 
         Ok(())
     }
@@ -214,29 +153,12 @@ impl IpcClient {
         pipe_path: String,
         sender: mpsc::UnboundedSender<IpcMessage>,
     ) -> Result<()> {
-        #[cfg(windows)]
-        {
-            use tokio::net::windows::named_pipe::ClientOptions;
+        let stream = ipc::IpcClient::connect(&pipe_path)
+            .await
+            .context("Failed to connect to IPC socket for events")?;
 
-            let pipe = ClientOptions::new()
-                .open(&pipe_path)
-                .context("Failed to open named pipe for events")?;
-
-            let reader = BufReader::new(pipe);
-            Self::process_incoming_messages(reader, sender).await
-        }
-
-        #[cfg(not(windows))]
-        {
-            use tokio::net::UnixStream;
-
-            let stream = UnixStream::connect(&pipe_path)
-                .await
-                .context("Failed to connect to Unix socket for events")?;
-
-            let reader = BufReader::new(stream);
-            Self::process_incoming_messages(reader, sender).await
-        }
+        let reader = BufReader::new(stream);
+        Self::process_incoming_messages(reader, sender).await
     }
 
     async fn process_incoming_messages<R>(

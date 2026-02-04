@@ -1,6 +1,7 @@
 use crate::file_entry::{FileEntry, FileType};
 use crate::git_status::GitStatus;
 use crate::operations::FileOperation;
+use crate::search::FuzzySearch;
 use anyhow::Result;
 use std::path::PathBuf;
 
@@ -38,6 +39,8 @@ pub struct App {
     pub git_status: Option<GitStatus>,
     pub scroll_offset: usize,
     pub error_message: Option<String>,
+    fuzzy_search: FuzzySearch,
+    filtered_entries: Vec<usize>,
 }
 
 impl App {
@@ -55,6 +58,8 @@ impl App {
             git_status: GitStatus::from_repo(&start_dir),
             scroll_offset: 0,
             error_message: None,
+            fuzzy_search: FuzzySearch::new(),
+            filtered_entries: Vec::new(),
         };
 
         app.load_directory()?;
@@ -66,6 +71,10 @@ impl App {
         self.selected_index = 0;
         self.scroll_offset = 0;
         self.git_status = GitStatus::from_repo(&self.current_dir);
+
+        // Update fuzzy search index
+        self.update_search_index();
+
         Ok(())
     }
 
@@ -81,6 +90,10 @@ impl App {
         }
 
         self.git_status = GitStatus::from_repo(&self.current_dir);
+
+        // Update fuzzy search index
+        self.update_search_index();
+
         Ok(())
     }
 
@@ -153,6 +166,14 @@ impl App {
     pub fn start_search(&mut self) {
         self.mode = AppMode::Search;
         self.search_query.clear();
+        self.filtered_entries.clear();
+    }
+
+    pub fn exit_search(&mut self) {
+        self.mode = AppMode::Normal;
+        self.search_query.clear();
+        self.filtered_entries.clear();
+        self.selected_index = 0;
     }
 
     pub fn start_delete_mode(&mut self) {
@@ -200,6 +221,7 @@ impl App {
     pub fn handle_input(&mut self, c: char) {
         if matches!(self.mode, AppMode::Search) {
             self.search_query.push(c);
+            self.update_fuzzy_search();
         } else if self.is_input_mode() {
             self.input_buffer.push(c);
         }
@@ -208,6 +230,7 @@ impl App {
     pub fn backspace_input(&mut self) {
         if matches!(self.mode, AppMode::Search) {
             self.search_query.pop();
+            self.update_fuzzy_search();
         } else if self.is_input_mode() {
             self.input_buffer.pop();
         }
@@ -324,7 +347,14 @@ impl App {
     pub fn visible_entries(&self) -> Vec<&FileEntry> {
         if self.search_query.is_empty() {
             self.entries.iter().collect()
+        } else if matches!(self.mode, AppMode::Search) {
+            // Use fuzzy search filtered results
+            self.filtered_entries
+                .iter()
+                .filter_map(|&idx| self.entries.get(idx))
+                .collect()
         } else {
+            // Fallback to simple substring search
             self.entries
                 .iter()
                 .filter(|e| {
@@ -338,5 +368,33 @@ impl App {
 
     pub fn current_entry(&self) -> Option<&FileEntry> {
         self.entries.get(self.selected_index)
+    }
+
+    /// Update the fuzzy search index with current entries
+    fn update_search_index(&mut self) {
+        self.fuzzy_search.clear();
+        let paths: Vec<PathBuf> = self.entries.iter().map(|e| e.path.clone()).collect();
+        self.fuzzy_search.populate(paths);
+    }
+
+    /// Perform fuzzy search and update filtered entries
+    fn update_fuzzy_search(&mut self) {
+        if self.search_query.is_empty() {
+            self.filtered_entries.clear();
+            return;
+        }
+
+        let results = self.fuzzy_search.search(&self.search_query, 1000);
+
+        // Map results back to entry indices
+        self.filtered_entries.clear();
+        for result in results {
+            if let Some(idx) = self.entries.iter().position(|e| e.path == result.path) {
+                self.filtered_entries.push(idx);
+            }
+        }
+
+        // Reset selection when search results change
+        self.selected_index = 0;
     }
 }

@@ -19,5 +19,5 @@ pub enum ExplorerError {
     Cancelled,
 
     #[error("Git error: {0}")]
-    Git(#[from] git2::Error),
+    Git(String),
 }

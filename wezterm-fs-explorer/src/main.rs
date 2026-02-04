@@ -3,9 +3,13 @@ mod error;
 mod file_entry;
 mod git_status;
 mod icons;
+mod ipc;
 mod ipc_client;
 mod keybindings;
 mod operations;
+mod path_utils;
+mod search;
+mod shell;
 mod ui;
 
 use anyhow::Result;
@@ -156,8 +160,15 @@ async fn run_app<B: ratatui::backend::Backend>(
                     (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                         return Ok(vec![]);
                     }
-                    (KeyCode::Char('q'), _) | (KeyCode::Esc, _) => {
+                    (KeyCode::Char('q'), _) => {
                         return Ok(vec![]);
+                    }
+                    (KeyCode::Esc, _) => {
+                        if app.mode == app::AppMode::Search {
+                            app.exit_search();
+                        } else {
+                            return Ok(vec![]);
+                        }
                     }
                     (KeyCode::Enter, _) => {
                         if let Some(selected) = app.get_selected_paths() {
@@ -212,7 +223,7 @@ async fn run_app<B: ratatui::backend::Backend>(
                     (KeyCode::Char('G'), KeyModifiers::SHIFT) => {
                         app.go_bottom();
                     }
-                    (KeyCode::Char('/'), _) => {
+                    (KeyCode::Char('/'), _) | (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
                         app.start_search();
                     }
                     (KeyCode::Char(' '), _) => {
