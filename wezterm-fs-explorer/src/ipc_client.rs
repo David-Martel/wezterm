@@ -1,3 +1,11 @@
+//! IPC client implementation for communicating with the wezterm-utils-daemon.
+//!
+//! This module provides JSON-RPC based messaging for file operations,
+//! directory watching, and inter-process communication.
+
+// Library module - items are exported for external consumers
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

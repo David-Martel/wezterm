@@ -26,10 +26,14 @@
 //! ```
 
 pub mod ipc;
+pub mod ipc_client;
 pub mod path_utils;
+pub mod search;
 pub mod shell;
 
 // Re-export commonly used types
 pub use ipc::{IpcClient, IpcServer, IpcStream};
+pub use ipc_client::{IpcMessage, JsonRpcError, JsonRpcRequest, JsonRpcResponse, open_file_in_editor};
 pub use path_utils::{detect_path_type, normalize_path, to_windows_path, to_wsl_path, PathType};
+pub use search::{FuzzySearch, SearchResult};
 pub use shell::{detect_shell, execute_command, translate_command, translate_path_in_command, Shell, ShellError};

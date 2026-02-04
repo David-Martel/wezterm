@@ -1,9 +1,9 @@
 use crate::file_entry::{FileEntry, FileType};
 use crate::git_status::GitStatus;
 use crate::operations::FileOperation;
-use crate::search::FuzzySearch;
 use anyhow::Result;
 use std::path::PathBuf;
+use wezterm_fs_explorer::search::FuzzySearch;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppMode {

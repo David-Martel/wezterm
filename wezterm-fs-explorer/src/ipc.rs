@@ -23,6 +23,12 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! Note: This module is designed as a library API. Some items may appear unused
+//! when compiling the binary crate but are exported for external consumers.
+
+// Allow unused items since this is a library module - items are exported for external use
+#![allow(dead_code)]
 
 use std::io::{Error as IoError, ErrorKind, Result};
 use std::path::Path;

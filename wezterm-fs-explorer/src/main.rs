@@ -3,13 +3,8 @@ mod error;
 mod file_entry;
 mod git_status;
 mod icons;
-mod ipc;
-mod ipc_client;
 mod keybindings;
 mod operations;
-mod path_utils;
-mod search;
-mod shell;
 mod ui;
 
 use anyhow::Result;
@@ -20,9 +15,11 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ipc_client::IpcClient;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{env, io, path::{Path, PathBuf}, time::Duration};
+
+// Import library modules
+use wezterm_fs_explorer::ipc_client::{self, IpcClient};
 
 #[derive(Parser, Debug)]
 #[command(name = "wezterm-fs-explorer")]

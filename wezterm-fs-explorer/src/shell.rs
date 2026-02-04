@@ -4,6 +4,9 @@
 //! and translate commands between different shell syntaxes, particularly
 //! for Windows environments (PowerShell, CMD, Git Bash, WSL).
 
+// Library module - items are exported for external consumers
+#![allow(dead_code)]
+
 use std::env;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -425,7 +428,7 @@ mod tests {
         let shell2 = shell1; // Copy
         assert_eq!(shell1, shell2);
 
-        let shell3 = shell1.clone();
+        let shell3 = shell1; // Also Copy
         assert_eq!(shell1, shell3);
     }
 

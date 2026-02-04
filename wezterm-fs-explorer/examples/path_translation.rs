@@ -4,7 +4,7 @@
 
 use std::path::Path;
 use wezterm_fs_explorer::path_utils::{
-    detect_path_type, normalize_path, to_windows_path, to_wsl_path, PathType,
+    detect_path_type, normalize_path, to_windows_path, to_wsl_path,
 };
 
 fn main() {

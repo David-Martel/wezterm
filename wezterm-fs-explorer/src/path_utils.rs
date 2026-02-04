@@ -24,6 +24,9 @@
 //! assert_eq!(detect_path_type(Path::new("/mnt/c/path")), PathType::Wsl);
 //! ```
 
+// Library module - items are exported for external consumers
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 
 /// Represents the type of a filesystem path.

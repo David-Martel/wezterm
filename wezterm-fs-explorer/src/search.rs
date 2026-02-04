@@ -7,6 +7,8 @@ pub struct SearchResult {
     /// The matching path
     pub path: PathBuf,
     /// Indices of matched characters in the file name for highlighting
+    /// Reserved for future highlighting functionality - not yet implemented
+    #[allow(dead_code)]
     pub indices: Vec<u32>,
 }
 
@@ -52,8 +54,15 @@ impl FuzzySearch {
             false,
         );
 
-        // Tick the matcher to process items
-        let _ = self.matcher.tick(10);
+        // Tick the matcher to process items - loop until items are processed
+        // Nucleo processes items asynchronously, so we need to wait
+        for _ in 0..100 {
+            let status = self.matcher.tick(10);
+            if status.changed || status.running {
+                continue;
+            }
+            break;
+        }
 
         // Get the snapshot of matches
         let snapshot = self.matcher.snapshot();
