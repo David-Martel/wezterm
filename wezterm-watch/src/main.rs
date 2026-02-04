@@ -25,7 +25,7 @@ struct Args {
     format: String,
 
     /// Debounce interval in milliseconds
-    #[arg(short, long, default_value = "100")]
+    #[arg(short = 'd', long, default_value = "100")]
     interval: u64,
 
     /// Enable git integration (default: auto-detect)

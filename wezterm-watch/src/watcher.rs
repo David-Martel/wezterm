@@ -191,13 +191,417 @@ impl FileWatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::thread;
+    use std::time::Duration;
+    use tempfile::TempDir;
+
+    // ============================================
+    // WatchEvent Unit Tests
+    // ============================================
 
     #[test]
-    fn test_watch_event_type() {
+    fn test_watch_event_type_created() {
         let event = WatchEvent::Created(PathBuf::from("test.txt"));
         assert_eq!(event.event_type(), "created");
+    }
 
+    #[test]
+    fn test_watch_event_type_modified() {
         let event = WatchEvent::Modified(PathBuf::from("test.txt"));
         assert_eq!(event.event_type(), "modified");
+    }
+
+    #[test]
+    fn test_watch_event_type_deleted() {
+        let event = WatchEvent::Deleted(PathBuf::from("test.txt"));
+        assert_eq!(event.event_type(), "deleted");
+    }
+
+    #[test]
+    fn test_watch_event_type_renamed() {
+        let event = WatchEvent::Renamed {
+            from: PathBuf::from("old.txt"),
+            to: PathBuf::from("new.txt"),
+        };
+        assert_eq!(event.event_type(), "renamed");
+    }
+
+    #[test]
+    fn test_watch_event_type_error() {
+        let event = WatchEvent::Error("error message".to_string());
+        assert_eq!(event.event_type(), "error");
+    }
+
+    #[test]
+    fn test_watch_event_path_created() {
+        let event = WatchEvent::Created(PathBuf::from("/path/to/file.txt"));
+        let path = event.path();
+        assert!(path.is_some());
+        assert_eq!(path.unwrap(), Path::new("/path/to/file.txt"));
+    }
+
+    #[test]
+    fn test_watch_event_path_modified() {
+        let event = WatchEvent::Modified(PathBuf::from("test.rs"));
+        let path = event.path();
+        assert!(path.is_some());
+        assert_eq!(path.unwrap(), Path::new("test.rs"));
+    }
+
+    #[test]
+    fn test_watch_event_path_deleted() {
+        let event = WatchEvent::Deleted(PathBuf::from("deleted_file.txt"));
+        let path = event.path();
+        assert!(path.is_some());
+        assert_eq!(path.unwrap(), Path::new("deleted_file.txt"));
+    }
+
+    #[test]
+    fn test_watch_event_path_renamed() {
+        let event = WatchEvent::Renamed {
+            from: PathBuf::from("old_name.txt"),
+            to: PathBuf::from("new_name.txt"),
+        };
+        let path = event.path();
+        assert!(path.is_some());
+        // Renamed events return the 'to' path
+        assert_eq!(path.unwrap(), Path::new("new_name.txt"));
+    }
+
+    #[test]
+    fn test_watch_event_path_error() {
+        let event = WatchEvent::Error("some error".to_string());
+        let path = event.path();
+        assert!(path.is_none());
+    }
+
+    #[test]
+    fn test_watch_event_clone() {
+        let event = WatchEvent::Created(PathBuf::from("test.txt"));
+        let cloned = event.clone();
+
+        assert_eq!(event.event_type(), cloned.event_type());
+        assert_eq!(event.path(), cloned.path());
+    }
+
+    #[test]
+    fn test_watch_event_debug() {
+        let event = WatchEvent::Created(PathBuf::from("test.txt"));
+        let debug_str = format!("{:?}", event);
+        assert!(debug_str.contains("Created"));
+        assert!(debug_str.contains("test.txt"));
+    }
+
+    // ============================================
+    // FileWatcher Creation Tests
+    // ============================================
+
+    #[test]
+    fn test_file_watcher_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            100,
+            false,
+            vec![],
+        );
+
+        assert!(watcher.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_with_custom_debounce() {
+        let temp_dir = TempDir::new().unwrap();
+        let watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            500, // 500ms debounce
+            false,
+            vec![],
+        );
+
+        assert!(watcher.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_with_gitignore() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a .gitignore file
+        fs::write(temp_dir.path().join(".gitignore"), "*.log\n*.tmp\n").unwrap();
+
+        let watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            100,
+            true, // use gitignore
+            vec![],
+        );
+
+        assert!(watcher.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_with_custom_ignores() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            100,
+            false,
+            vec!["*.bak".to_string(), "cache/".to_string()],
+        );
+
+        assert!(watcher.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_with_gitignore_and_custom_ignores() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a .gitignore file
+        fs::write(temp_dir.path().join(".gitignore"), "*.log\n").unwrap();
+
+        let watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            100,
+            true, // use gitignore
+            vec!["*.backup".to_string()], // additional ignores
+        );
+
+        assert!(watcher.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_receiver_available() {
+        let temp_dir = TempDir::new().unwrap();
+        let watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            100,
+            false,
+            vec![],
+        ).unwrap();
+
+        // Receiver should be accessible
+        let _receiver = watcher.receiver();
+    }
+
+    // ============================================
+    // FileWatcher Watch Tests
+    // ============================================
+
+    #[test]
+    fn test_file_watcher_watch_recursive() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create subdirectory
+        fs::create_dir(temp_dir.path().join("subdir")).unwrap();
+
+        let mut watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            100,
+            false,
+            vec![],
+        ).unwrap();
+
+        let result = watcher.watch(true);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_file_watcher_watch_non_recursive() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            100,
+            false,
+            vec![],
+        ).unwrap();
+
+        let result = watcher.watch(false);
+        assert!(result.is_ok());
+    }
+
+    // ============================================
+    // FileWatcher Integration Tests
+    // ============================================
+
+    #[test]
+    #[ignore] // Ignore by default as this is a slow integration test
+    fn test_file_watcher_detects_file_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            50, // Short debounce for faster test
+            false,
+            vec![],
+        ).unwrap();
+
+        watcher.watch(true).unwrap();
+        let receiver = watcher.receiver().clone();
+
+        // Create a file
+        let file_path = temp_dir.path().join("new_file.txt");
+        fs::write(&file_path, "test content").unwrap();
+
+        // Wait for event with timeout
+        let event = receiver.recv_timeout(Duration::from_secs(2));
+        assert!(event.is_ok());
+
+        match event.unwrap() {
+            WatchEvent::Created(path) | WatchEvent::Modified(path) => {
+                assert!(path.ends_with("new_file.txt"));
+            }
+            other => panic!("Unexpected event: {:?}", other),
+        }
+    }
+
+    #[test]
+    #[ignore] // Ignore by default as this is a slow integration test
+    fn test_file_watcher_detects_file_modification() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create initial file
+        let file_path = temp_dir.path().join("existing.txt");
+        fs::write(&file_path, "initial content").unwrap();
+
+        // Wait a bit for filesystem to settle
+        thread::sleep(Duration::from_millis(100));
+
+        let mut watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            50,
+            false,
+            vec![],
+        ).unwrap();
+
+        watcher.watch(true).unwrap();
+        let receiver = watcher.receiver().clone();
+
+        // Modify the file
+        fs::write(&file_path, "modified content").unwrap();
+
+        // Wait for event
+        let event = receiver.recv_timeout(Duration::from_secs(2));
+        assert!(event.is_ok());
+
+        match event.unwrap() {
+            WatchEvent::Modified(path) => {
+                assert!(path.ends_with("existing.txt"));
+            }
+            WatchEvent::Created(path) => {
+                // Some systems report modification as creation
+                assert!(path.ends_with("existing.txt"));
+            }
+            other => panic!("Unexpected event: {:?}", other),
+        }
+    }
+
+    #[test]
+    #[ignore] // Ignore by default as this is a slow integration test
+    fn test_file_watcher_detects_file_deletion() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create initial file
+        let file_path = temp_dir.path().join("to_delete.txt");
+        fs::write(&file_path, "will be deleted").unwrap();
+
+        thread::sleep(Duration::from_millis(100));
+
+        let mut watcher = FileWatcher::new(
+            temp_dir.path().to_path_buf(),
+            50,
+            false,
+            vec![],
+        ).unwrap();
+
+        watcher.watch(true).unwrap();
+        let receiver = watcher.receiver().clone();
+
+        // Delete the file
+        fs::remove_file(&file_path).unwrap();
+
+        // Wait for event
+        let event = receiver.recv_timeout(Duration::from_secs(2));
+        assert!(event.is_ok());
+
+        match event.unwrap() {
+            WatchEvent::Deleted(path) => {
+                assert!(path.ends_with("to_delete.txt"));
+            }
+            other => panic!("Unexpected event: {:?}", other),
+        }
+    }
+
+    // ============================================
+    // Gitignore Pattern Tests
+    // ============================================
+
+    #[test]
+    fn test_load_gitignore_default_patterns() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Even without a .gitignore file, default patterns should be added
+        let gitignore = FileWatcher::load_gitignore(temp_dir.path(), vec![]);
+        assert!(gitignore.is_ok());
+
+        let gi = gitignore.unwrap();
+        assert!(gi.is_some());
+
+        let gi = gi.unwrap();
+        // Should ignore .git directory
+        assert!(gi.matched(Path::new(".git"), true).is_ignore());
+        // Should ignore target directory
+        assert!(gi.matched(Path::new("target"), true).is_ignore());
+        // Should ignore node_modules
+        assert!(gi.matched(Path::new("node_modules"), true).is_ignore());
+    }
+
+    #[test]
+    fn test_load_gitignore_with_custom_patterns() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let gitignore = FileWatcher::load_gitignore(
+            temp_dir.path(),
+            vec!["*.backup".to_string(), "temp/".to_string()],
+        );
+
+        assert!(gitignore.is_ok());
+        let gi = gitignore.unwrap().unwrap();
+
+        // Should ignore custom patterns
+        assert!(gi.matched(Path::new("file.backup"), false).is_ignore());
+    }
+
+    #[test]
+    fn test_build_custom_ignore() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let gitignore = FileWatcher::build_custom_ignore(
+            temp_dir.path(),
+            vec!["*.log".to_string(), "cache/".to_string()],
+        );
+
+        assert!(gitignore.is_ok());
+        let gi = gitignore.unwrap().unwrap();
+
+        assert!(gi.matched(Path::new("debug.log"), false).is_ignore());
+    }
+
+    #[test]
+    fn test_load_gitignore_from_file() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a .gitignore file
+        fs::write(
+            temp_dir.path().join(".gitignore"),
+            "*.custom\nbuild/\n!important.custom\n",
+        ).unwrap();
+
+        let gitignore = FileWatcher::load_gitignore(temp_dir.path(), vec![]);
+        assert!(gitignore.is_ok());
+
+        let gi = gitignore.unwrap().unwrap();
+        assert!(gi.matched(Path::new("test.custom"), false).is_ignore());
+        assert!(gi.matched(Path::new("build"), true).is_ignore());
     }
 }
