@@ -1,91 +1,95 @@
 # WezTerm Quick Context
 
 ## Current State
-- **Branch**: main @ 801eb8067
+- **Branch**: main @ 00c43b6d6
 - **Origin**: github.com/david-t-martel/wezterm (your fork)
 - **Upstream**: github.com/wezterm/wezterm (original)
-- **Tests**: 182 passing (108 fs-explorer + 74 watch)
+- **Tests**: 34 new tests (20 fs-utils + 14 module-framework) + 182 existing
 
-## Latest Session (2026-02-04 Build Enhancements)
+## Latest Session (2026-02-04 Module Framework)
 
 ### Major Achievements
-- Migrated git2 -> gix (pure Rust, no native deps)
-- Added UDS Windows IPC (`src/ipc.rs`)
-- Added WSL path translation (`src/path_utils.rs`)
-- Added shell detection (`src/shell.rs`)
-- Added fuzzy search with nucleo (`src/search.rs`)
-- Enhanced Justfile to 49 targets
-- Added cargo-binstall and cargo-smart-release
-- Created Windows CI workflow
-- Added PowerShell build tools framework (tools/)
+- Created `wezterm-fs-utils` crate (walker, search, watcher)
+- Created `wezterm-module-framework` crate (Module trait, Capabilities, Registry)
+- Implemented FsExplorerPane following TermWizTerminalPane pattern
+- Implemented WatcherModule for background file watching
+- Fixed Windows libgit2-sys linker errors (removed git2 from wezterm-version)
+- Fixed termwiz Position type imports with ANSI escape sequences
+- Full workspace build verified (831 crates)
 
 ### New Files
 ```
-wezterm-fs-explorer/src/
-├── ipc.rs         # UDS Windows IPC
-├── path_utils.rs  # WSL path translation
-├── shell.rs       # Shell detection
-└── search.rs      # Fuzzy search (nucleo)
+wezterm-fs-utils/
+├── Cargo.toml
+└── src/
+    ├── lib.rs
+    ├── walker.rs    # gitignore-aware walking (ignore crate)
+    ├── search.rs    # Fuzzy search (nucleo-matcher)
+    └── watcher.rs   # File watching (notify-debouncer-full)
 
-tools/
-├── Build-Integration.ps1  # Master build tools (1,280 lines)
-├── Invoke-Gix.ps1         # gix CLI wrapper
-├── CargoTools/            # PowerShell module for cargo
-└── README.md              # Tools documentation
-
-Root:
-├── release.toml   # cargo-smart-release config
-├── cliff.toml     # git-cliff changelog
-└── .github/workflows/windows-ci.yml
+wezterm-module-framework/
+├── Cargo.toml
+└── src/
+    ├── lib.rs        # Module trait, Capabilities bitflags
+    ├── context.rs    # ModuleContext for safe Mux/config access
+    ├── registry.rs   # ModuleRegistry lifecycle management
+    └── modules/
+        ├── mod.rs
+        ├── fs_explorer/
+        │   ├── mod.rs     # FsExplorerModule
+        │   └── pane.rs    # FsExplorerPane (TermWizTerminalPane pattern)
+        └── watcher/
+            └── mod.rs     # WatcherModule
 ```
 
 ## Build Commands
 
+**Check new crates**:
+```bash
+cargo check -p wezterm-fs-utils -p wezterm-module-framework
+cargo test -p wezterm-fs-utils -p wezterm-module-framework
+```
+
+**Full workspace**:
+```bash
+cargo check --workspace    # 831 crates
+just quick-check           # fmt + clippy + check
+```
+
 **Windows (Just)** - 49 targets available:
 ```powershell
-# Development
 just quick-check        # Fast check + fmt + clippy
-just build-utils        # Build custom utilities
+just build              # Standard build with sccache
 just test-nextest       # Run all tests
 just dev-cycle          # Full development cycle
-
-# Tools
-just bootstrap-tools    # Install all dev tools
-just check-tools        # Verify tool installation
-just install-dev-tools  # Install nextest, llvm-cov, git-cliff
-
-# Coverage
-just coverage-open      # Generate and open coverage report
-
-# Release
-just release-preview    # Preview release changes
-just release-execute    # Execute release
-just changelog          # Generate changelog
-
-# Repository (gix)
-just repo-stats         # Repository statistics
-just unreleased-commits # Commits since last tag
-
-# CI
-just ci-validate        # Full CI validation
-just full-local-ci      # Comprehensive local CI
 ```
 
-**Cargo Aliases**:
-```bash
-cargo b    # build
-cargo c    # check
-cargo t    # test
-cargo nt   # nextest run
-cargo br   # build --release
-```
+## Key Fixes Applied
 
-## Custom Utilities
+1. **libgit2-sys linker errors** - Removed git2 from wezterm-version/build.rs
+2. **termwiz Position types** - Use ANSI escape sequences via `advance_bytes()`
+3. **bitflags 1.x syntax** - No derive attributes (auto-generated)
+4. **ConfigHandle type** - Return ConfigHandle instead of Arc<Config>
+
+## Custom Utilities Status
 
 | Utility | Tests | Status |
 |---------|-------|--------|
-| wezterm-fs-explorer | 108 | Passing |
-| wezterm-watch | 74 | Passing |
+| wezterm-fs-utils | 20 | ✅ Passing |
+| wezterm-module-framework | 14 | ✅ Passing |
+| wezterm-fs-explorer | 108 | ✅ Passing |
+| wezterm-watch | 74 | ✅ Passing |
+
+## Uncommitted Changes
+
+```
+wezterm-fs-utils/          # New crate
+wezterm-module-framework/  # New crate
+wezterm-version/build.rs   # Fixed git2 removal
+wezterm-version/Cargo.toml # Removed git2 dependency
+Cargo.toml                 # Added workspace members
+.cargo/config.toml         # Added OpenSSL vcpkg config
+```
 
 ## sccache Configuration
 
@@ -104,13 +108,13 @@ git merge upstream/main     # Merge upstream
 ```
 
 ## Recommended Next Steps
-1. Integration tests for new modules (ipc, path_utils, shell)
-2. Security audit of IPC and path translation
-3. Performance profiling of fuzzy search
-4. Increase test coverage to 85%
+1. Commit all new crates to git
+2. Add module initialization to wezterm-gui/src/main.rs
+3. Register Lua API functions in config module
+4. Research russh/thrussh as pure-Rust SSH alternatives (deferred)
 
 ## Working Directory
 `C:\Users\david\wezterm`
 
 ---
-*Full context: wezterm-context-2026-02-04-build-enhancements.md*
+*Full context: wezterm-context-2026-02-04-module-framework.md*

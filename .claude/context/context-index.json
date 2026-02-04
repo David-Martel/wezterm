@@ -1,6 +1,70 @@
 {
   "contexts": [
     {
+      "id": "ctx-wezterm-module-framework-20260204",
+      "project": "WezTerm Terminal Emulator",
+      "repository": "github.com/david-t-martel/wezterm",
+      "timestamp": "2026-02-04T12:00:00Z",
+      "file": "wezterm-context-2026-02-04-module-framework.md",
+      "summary": "Implemented WezTerm Module Framework with wezterm-fs-utils and wezterm-module-framework crates",
+      "key_achievements": [
+        "Created wezterm-fs-utils crate (walker, search, watcher)",
+        "Created wezterm-module-framework crate (Module trait, Capabilities, Registry)",
+        "Implemented FsExplorerPane following TermWizTerminalPane pattern",
+        "Implemented WatcherModule for background file watching",
+        "Fixed Windows libgit2-sys linker errors by removing git2 from wezterm-version",
+        "Fixed termwiz Position type imports with ANSI escape sequences",
+        "All 34 unit tests passing",
+        "Full workspace build verified (831 crates)"
+      ],
+      "active_work": [
+        "Module initialization hook in wezterm-gui pending",
+        "Lua API registration pending"
+      ],
+      "next_steps": [
+        "Commit all new crates to git",
+        "Add module initialization to wezterm-gui/src/main.rs",
+        "Register Lua API functions",
+        "Research russh/thrussh as pure-Rust SSH alternatives"
+      ],
+      "technologies": [
+        "Rust",
+        "ignore crate (gitignore-aware walking)",
+        "nucleo-matcher (fuzzy search)",
+        "notify-debouncer-full (file watching)",
+        "crossbeam channels",
+        "bitflags 1.x"
+      ],
+      "agents_used": [
+        "rust-pro (FsExplorerPane generation)"
+      ],
+      "test_results": {
+        "wezterm-fs-utils": 20,
+        "wezterm-module-framework": 14,
+        "total": 34,
+        "status": "all_passed"
+      },
+      "quick_restore": {
+        "working_directory": "C:\\Users\\david\\wezterm",
+        "branch": "main",
+        "commit": "00c43b6d6",
+        "build_command": "cargo check -p wezterm-fs-utils -p wezterm-module-framework",
+        "test_command": "cargo test -p wezterm-fs-utils -p wezterm-module-framework",
+        "key_files": [
+          "wezterm-fs-utils/src/lib.rs",
+          "wezterm-fs-utils/src/walker.rs",
+          "wezterm-fs-utils/src/search.rs",
+          "wezterm-fs-utils/src/watcher.rs",
+          "wezterm-module-framework/src/lib.rs",
+          "wezterm-module-framework/src/context.rs",
+          "wezterm-module-framework/src/registry.rs",
+          "wezterm-module-framework/src/modules/fs_explorer/pane.rs",
+          "wezterm-version/build.rs",
+          "Cargo.toml"
+        ]
+      }
+    },
+    {
       "id": "ctx-wezterm-build-20260204",
       "project": "WezTerm Terminal Emulator",
       "repository": "github.com/david-t-martel/wezterm",
@@ -163,8 +227,8 @@
   ],
   "metadata": {
     "version": "2.0",
-    "last_updated": "2026-02-04T06:30:00Z",
-    "latest": "ctx-wezterm-build-20260204",
+    "last_updated": "2026-02-04T12:00:00Z",
+    "latest": "ctx-wezterm-module-framework-20260204",
     "format": "context-index",
     "purpose": "Quick lookup and restoration of project contexts"
   }
