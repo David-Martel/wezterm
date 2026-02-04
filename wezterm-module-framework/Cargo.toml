@@ -1,0 +1,44 @@
+[package]
+name = "wezterm-module-framework"
+version = "0.1.0"
+edition = "2021"
+authors = ["David Martel"]
+description = "Module framework for WezTerm extensions"
+license = "MIT"
+repository = "https://github.com/wez/wezterm"
+
+[dependencies]
+# Core WezTerm dependencies
+mux = { workspace = true }
+config = { workspace = true }
+termwiz = { workspace = true }
+wezterm-term = { workspace = true }
+wezterm-fs-utils = { workspace = true }
+
+# Lua integration
+luahelper = { workspace = true }
+mlua = { workspace = true }
+
+# Async and concurrency
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+crossbeam = { workspace = true }
+parking_lot = { workspace = true }
+
+# Utilities
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+bitflags = { workspace = true }
+downcast-rs = { workspace = true }
+
+# File descriptor handling
+filedescriptor = { workspace = true }
+
+# Data types
+serde = { workspace = true, features = ["derive"] }
+rangeset = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
