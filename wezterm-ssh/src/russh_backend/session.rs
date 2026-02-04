@@ -14,6 +14,7 @@ use tokio::net::TcpStream;
 
 use super::channel::RusshChannel;
 use super::handler::WezTermHandler;
+use super::sftp::RusshSftp;
 use crate::session::SessionEvent;
 
 /// Configuration for russh client connections.
@@ -104,6 +105,14 @@ impl RusshSession {
     pub async fn open_channel(&self) -> anyhow::Result<RusshChannel> {
         let channel = self.handle.channel_open_session().await?;
         Ok(RusshChannel::new(channel))
+    }
+
+    /// Open an SFTP channel.
+    ///
+    /// This creates a new channel with the SFTP subsystem for file operations.
+    pub async fn open_sftp(&self) -> anyhow::Result<RusshSftp> {
+        let channel = self.handle.channel_open_session().await?;
+        RusshSftp::new(channel).await
     }
 
     /// Disconnect the session.

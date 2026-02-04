@@ -1,6 +1,9 @@
 use crate::sftp::types::Metadata;
 use crate::sftp::{SftpChannelError, SftpChannelResult};
 
+#[cfg(feature = "russh")]
+use crate::russh_backend::{block_on, RusshFile};
+
 pub(crate) enum FileWrap {
     #[cfg(feature = "ssh2")]
     Ssh2(ssh2::File),
@@ -9,19 +12,43 @@ pub(crate) enum FileWrap {
     LibSsh(libssh_rs::SftpFile),
 
     #[cfg(feature = "russh")]
-    Russh(RusshFilePlaceholder),
+    Russh(RusshFile),
 }
 
-/// Placeholder for russh SFTP file implementation.
+/// Synchronous reader wrapper for russh async file.
 #[cfg(feature = "russh")]
-pub(crate) struct RusshFilePlaceholder;
+struct RusshFileReader<'a> {
+    file: &'a RusshFile,
+}
 
 #[cfg(feature = "russh")]
-fn russh_file_not_implemented<T>() -> SftpChannelResult<T> {
-    Err(SftpChannelError::from(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "SFTP file operations not yet implemented for russh backend",
-    )))
+impl<'a> std::io::Read for RusshFileReader<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        block_on(self.file.read(buf)).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+        })
+    }
+}
+
+/// Synchronous writer wrapper for russh async file.
+#[cfg(feature = "russh")]
+struct RusshFileWriter<'a> {
+    file: &'a RusshFile,
+}
+
+#[cfg(feature = "russh")]
+impl<'a> std::io::Write for RusshFileWriter<'a> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        block_on(self.file.write(buf)).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+        })
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        block_on(self.file.flush()).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+        })
+    }
 }
 
 impl FileWrap {
@@ -34,9 +61,7 @@ impl FileWrap {
             Self::LibSsh(file) => Box::new(file),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                panic!("russh SFTP file reader not implemented")
-            }
+            Self::Russh(file) => Box::new(RusshFileReader { file }),
         }
     }
 
@@ -49,9 +74,7 @@ impl FileWrap {
             Self::LibSsh(file) => Box::new(file),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                panic!("russh SFTP file writer not implemented")
-            }
+            Self::Russh(file) => Box::new(RusshFileWriter { file }),
         }
     }
 
@@ -74,10 +97,7 @@ impl FileWrap {
             .into()),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = metadata;
-                russh_file_not_implemented()
-            }
+            Self::Russh(file) => block_on(file.set_metadata(metadata)),
         }
     }
 
@@ -93,7 +113,7 @@ impl FileWrap {
                 .map_err(SftpChannelError::from),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => russh_file_not_implemented(),
+            Self::Russh(file) => block_on(file.metadata()),
         }
     }
 
@@ -109,7 +129,7 @@ impl FileWrap {
             }
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => russh_file_not_implemented(),
+            Self::Russh(file) => block_on(file.flush()),
         }
     }
 }

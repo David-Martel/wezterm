@@ -14,11 +14,12 @@
 //! - Native Windows Pageant support
 //! - SSH agent forwarding
 //! - SFTP via russh-sftp
-//! - Modern cryptography (aws-lc-rs backend - FIPS validated)
+//! - Modern cryptography (ring backend)
 
 mod handler;
 mod session;
 mod channel;
+mod sftp;
 
 #[cfg(test)]
 mod tests;
@@ -26,6 +27,7 @@ mod tests;
 pub use handler::WezTermHandler;
 pub use session::RusshSession;
 pub use channel::RusshChannel;
+pub use sftp::{RusshSftp, RusshFile, RusshDir};
 
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;

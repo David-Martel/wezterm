@@ -7,7 +7,7 @@ use crate::session::{Exec, ExecResult, SessionEvent, SessionRequest, SignalChann
 use crate::sessionwrap::SessionWrap;
 use crate::sftp::dir::{Dir, DirId, DirRequest};
 use crate::sftp::file::{File, FileId, FileRequest};
-use crate::sftp::{OpenWithMode, SftpChannelResult, SftpRequest};
+use crate::sftp::{OpenWithMode, SftpChannelError, SftpChannelResult, SftpRequest};
 use crate::sftpwrap::SftpWrap;
 use anyhow::{anyhow, Context};
 use camino::Utf8PathBuf;
@@ -1071,8 +1071,13 @@ impl SessionInner {
             #[cfg(feature = "russh")]
             SessionWrap::Russh(sess) => {
                 if sess.sftp.is_none() {
-                    // SFTP not yet implemented for russh backend
-                    sess.sftp = Some(SftpWrap::Russh(crate::sftpwrap::RusshSftpPlaceholder));
+                    // Open SFTP channel via russh
+                    let sftp = crate::russh_backend::block_on(sess.sess.open_sftp())
+                        .map_err(|e| SftpChannelError::from(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to open SFTP channel: {}", e),
+                        )))?;
+                    sess.sftp = Some(SftpWrap::Russh(sftp));
                 }
                 Ok(sess.sftp.as_mut().expect("sftp should have been set above"))
             }

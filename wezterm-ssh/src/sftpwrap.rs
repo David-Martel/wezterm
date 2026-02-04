@@ -4,6 +4,9 @@ use crate::sftp::types::{Metadata, OpenOptions, RenameOptions};
 use crate::sftp::SftpChannelResult;
 use camino::{Utf8Path, Utf8PathBuf};
 
+#[cfg(feature = "russh")]
+use crate::russh_backend::{block_on, RusshSftp};
+
 pub(crate) enum SftpWrap {
     #[cfg(feature = "ssh2")]
     Ssh2(ssh2::Sftp),
@@ -12,22 +15,7 @@ pub(crate) enum SftpWrap {
     LibSsh(libssh_rs::Sftp),
 
     #[cfg(feature = "russh")]
-    Russh(RusshSftpPlaceholder),
-}
-
-/// Placeholder for russh SFTP implementation.
-///
-/// Full SFTP support via russh-sftp will be added in a future task.
-#[cfg(feature = "russh")]
-pub(crate) struct RusshSftpPlaceholder;
-
-#[cfg(feature = "russh")]
-fn russh_sftp_not_implemented<T>() -> SftpChannelResult<T> {
-    use crate::sftp::SftpChannelError;
-    Err(SftpChannelError::from(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "SFTP not yet implemented for russh backend",
-    )))
+    Russh(RusshSftp),
 }
 
 #[cfg(feature = "ssh2")]
@@ -75,9 +63,9 @@ impl SftpWrap {
             }
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = (filename, opts);
-                russh_sftp_not_implemented()
+            Self::Russh(sftp) => {
+                let file = block_on(sftp.open(filename, opts))?;
+                Ok(FileWrap::Russh(file))
             }
         }
     }
@@ -91,10 +79,7 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.symlink(path.as_str(), target.as_str())?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = (path, target);
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.symlink(path, target)),
         }
     }
 
@@ -107,10 +92,7 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.read_link(filename.as_str())?.into()),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.read_link(filename)),
         }
     }
 
@@ -123,10 +105,7 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.canonicalize(filename.as_str())?.into()),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.canonicalize(filename)),
         }
     }
 
@@ -139,10 +118,7 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.remove_file(filename.as_str())?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.unlink(filename)),
         }
     }
 
@@ -155,10 +131,7 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.remove_dir(filename.as_str())?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.remove_dir(filename)),
         }
     }
 
@@ -174,10 +147,7 @@ impl SftpWrap {
             }
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = (filename, mode);
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.create_dir(filename, mode)),
         }
     }
 
@@ -198,10 +168,7 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.rename(src.as_str(), dest.as_str())?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = (src, dest, opts);
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.rename(src, dest, opts)),
         }
     }
 
@@ -216,10 +183,7 @@ impl SftpWrap {
                 .map(Metadata::from)?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.symlink_metadata(filename)),
         }
     }
 
@@ -232,10 +196,7 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.metadata(filename.as_str()).map(Metadata::from)?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.metadata(filename)),
         }
     }
 
@@ -251,10 +212,7 @@ impl SftpWrap {
             }
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = (filename, metadata);
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.set_metadata(filename, metadata)),
         }
     }
 
@@ -267,9 +225,9 @@ impl SftpWrap {
             Self::LibSsh(sftp) => Ok(sftp.open_dir(filename.as_str()).map(DirWrap::LibSsh)?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
+            Self::Russh(sftp) => {
+                let dir = block_on(sftp.open_dir(filename))?;
+                Ok(DirWrap::Russh(dir))
             }
         }
     }
@@ -306,10 +264,7 @@ impl SftpWrap {
             }
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => {
-                let _ = filename;
-                russh_sftp_not_implemented()
-            }
+            Self::Russh(sftp) => block_on(sftp.read_dir(filename)),
         }
     }
 }

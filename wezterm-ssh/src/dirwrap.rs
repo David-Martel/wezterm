@@ -2,6 +2,9 @@ use crate::sftp::types::Metadata;
 use crate::sftp::{SftpChannelError, SftpChannelResult};
 use camino::Utf8PathBuf;
 
+#[cfg(feature = "russh")]
+use crate::russh_backend::{block_on, RusshDir};
+
 pub(crate) enum DirWrap {
     #[cfg(feature = "ssh2")]
     Ssh2(ssh2::File),
@@ -10,12 +13,8 @@ pub(crate) enum DirWrap {
     LibSsh(libssh_rs::SftpDir),
 
     #[cfg(feature = "russh")]
-    Russh(RusshDirPlaceholder),
+    Russh(RusshDir),
 }
-
-/// Placeholder for russh SFTP directory implementation.
-#[cfg(feature = "russh")]
-pub(crate) struct RusshDirPlaceholder;
 
 impl DirWrap {
     pub fn read_dir(&mut self) -> SftpChannelResult<(Utf8PathBuf, Metadata)> {
@@ -52,10 +51,15 @@ impl DirWrap {
             },
 
             #[cfg(feature = "russh")]
-            Self::Russh(_) => Err(SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "SFTP directory operations not yet implemented for russh backend",
-            ))),
+            Self::Russh(dir) => {
+                match block_on(dir.next()) {
+                    Some((path, metadata)) => Ok((path, metadata)),
+                    None => Err(SftpChannelError::from(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "no more files",
+                    ))),
+                }
+            }
         }
     }
 }
