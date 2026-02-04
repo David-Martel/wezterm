@@ -15,19 +15,24 @@ This plan outlines the roadmap for building customizations and optimizations to 
 ## Phase 0: Housekeeping & Quick Wins (Current)
 
 ### 0.1 Update .gitignore
-- [ ] Add temp/log files: `TODO.md`, `*.log`, `clippy-output.txt`
-- [ ] Add IDE/editor files if missing
-- [ ] Verify `.github/` overrides work correctly
+- [x] Add temp/log files: `TODO.md`, `*.log`, `clippy-output.txt`
+- [x] Add IDE/editor files if missing
+- [x] Verify `.github/` overrides work correctly
 
 ### 0.2 Incorporate Microsoft Rust Guidelines
-- [ ] Add guidelines reference to `CLAUDE.md`
-- [ ] Create `AGENTS.md` with Rust-specific agent instructions
-- [ ] Document key guidelines for contributors
+- [x] Add guidelines reference to `CLAUDE.md`
+- [x] Create `AGENTS.md` with Rust-specific agent instructions
+- [x] Document key guidelines for contributors
 
 ### 0.3 Repository Cleanup
-- [ ] Remove untracked temp files or commit them appropriately
-- [ ] Consider adding `wezterm-fs-explorer` to workspace
-- [ ] Verify all clippy warnings resolved
+- [x] Remove untracked temp files or commit them appropriately
+- [ ] Consider adding `wezterm-fs-explorer` to workspace (deferred - dependency version conflicts)
+- [x] Verify all clippy warnings resolved
+
+**Note on wezterm-fs-explorer workspace inclusion:**
+The utility has its own `[workspace]` declaration and uses different dependency versions
+(e.g., `git2 = "0.18"` vs workspace `git2 = "0.20"`). Adding to main workspace would
+require dependency reconciliation. Kept standalone for now.
 
 ---
 
