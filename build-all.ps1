@@ -14,11 +14,20 @@
     - Parallel builds for maximum speed
     - Verification tests for all components
     - Installation to user PATH locations
+    - Release packaging with versioned artifacts
+    - Development tools installation via cargo-binstall
+    - Changelog generation with git-cliff
     - Rollback capability on failure
     - Comprehensive error handling
 
 .PARAMETER BuildProfile
     Rust build profile to use (release, release-fast, debug)
+
+.PARAMETER Sccache
+    Enable/disable sccache build acceleration (auto, on, off)
+
+.PARAMETER Lld
+    Enable/disable lld-link linker (auto, on, off)
 
 .PARAMETER SkipTests
     Skip running verification tests
@@ -29,6 +38,18 @@
 .PARAMETER Force
     Force reinstall even if binaries exist
 
+.PARAMETER Release
+    Create release artifacts in addition to installation
+
+.PARAMETER Package
+    Create release packages without installing (implies -SkipTests)
+
+.PARAMETER Version
+    Override version for release packages (defaults to Cargo.toml or git tag)
+
+.PARAMETER Changelog
+    Generate/update CHANGELOG.md using git-cliff (standalone operation)
+
 .EXAMPLE
     .\build-all.ps1
     Build and install all utilities with default settings
@@ -36,6 +57,18 @@
 .EXAMPLE
     .\build-all.ps1 -BuildProfile release-fast -Force
     Force rebuild with optimized profile
+
+.EXAMPLE
+    .\build-all.ps1 -Release -Version "1.0.0"
+    Build, install, and create versioned release packages
+
+.EXAMPLE
+    .\build-all.ps1 -Package
+    Build and package for distribution without installing
+
+.EXAMPLE
+    .\build-all.ps1 -Changelog
+    Generate/update CHANGELOG.md from git history
 #>
 
 [CmdletBinding()]
@@ -62,7 +95,16 @@ param(
     [switch]$Force,
 
     [Parameter()]
-    [switch]$Verbose
+    [switch]$Release,
+
+    [Parameter()]
+    [switch]$Package,
+
+    [Parameter()]
+    [string]$Version,
+
+    [Parameter()]
+    [switch]$Changelog
 )
 
 $ErrorActionPreference = 'Stop'
@@ -126,11 +168,11 @@ function Write-Status {
 
     $color = $Script:Colors[$Level]
     $prefix = switch ($Level) {
-        'Success' { '✓' }
-        'Error' { '✗' }
-        'Warning' { '⚠' }
-        'Info' { '→' }
-        default { ' ' }
+        'Success' { '[OK]' }
+        'Error' { '[ERR]' }
+        'Warning' { '[WARN]' }
+        'Info' { '[INFO]' }
+        default { '     ' }
     }
 
     Write-Host "$prefix $Message" -ForegroundColor $color
@@ -139,14 +181,14 @@ function Write-Status {
 function Write-Section {
     param([string]$Title)
     Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "=================================================================" -ForegroundColor Cyan
     Write-Host " $Title" -ForegroundColor Cyan
-    Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "=================================================================" -ForegroundColor Cyan
 }
 
 function Write-Step {
     param([string]$Message)
-    Write-Host "  → $Message" -ForegroundColor DarkGray
+    Write-Host "  > $Message" -ForegroundColor DarkGray
 }
 
 # ============================================================================
@@ -209,6 +251,112 @@ function Test-Prerequisites {
     }
 
     Write-Status "All prerequisites satisfied" -Level Success
+}
+
+# ============================================================================
+# DEVELOPMENT TOOLS INSTALLATION
+# ============================================================================
+
+function Install-CargoBinstall {
+    <#
+    .SYNOPSIS
+        Installs cargo-binstall if not already present
+
+    .DESCRIPTION
+        cargo-binstall allows fast binary installation of Rust crates
+        without compilation, significantly speeding up dev tool setup
+    #>
+
+    if (Get-Command cargo-binstall -ErrorAction SilentlyContinue) {
+        Write-Status "cargo-binstall already installed" -Level Success
+        return $true
+    }
+
+    Write-Section "Installing cargo-binstall"
+    Write-Step "This will download and install cargo-binstall..."
+
+    try {
+        # Install cargo-binstall using cargo install
+        $output = cargo install cargo-binstall 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Status "cargo-binstall installation failed" -Level Error
+            $output | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+            return $false
+        }
+
+        Write-Status "cargo-binstall installed successfully" -Level Success
+        return $true
+    } catch {
+        Write-Status "Failed to install cargo-binstall: $_" -Level Error
+        return $false
+    }
+}
+
+function Install-DevTools {
+    <#
+    .SYNOPSIS
+        Installs essential Rust development tools using cargo-binstall
+
+    .DESCRIPTION
+        Installs the following tools:
+        - cargo-nextest: Fast test runner
+        - cargo-llvm-cov: Code coverage tool
+        - git-cliff: Changelog generator
+    #>
+
+    Write-Section "Installing Development Tools"
+
+    # Ensure cargo-binstall is available
+    if (-not (Install-CargoBinstall)) {
+        Write-Status "Cannot install dev tools without cargo-binstall" -Level Error
+        return $false
+    }
+
+    $tools = @(
+        @{ Name = 'cargo-nextest'; Description = 'Fast test runner' }
+        @{ Name = 'cargo-llvm-cov'; Description = 'Code coverage tool' }
+        @{ Name = 'git-cliff'; Description = 'Changelog generator' }
+    )
+
+    $installed = @()
+    $failed = @()
+
+    foreach ($tool in $tools) {
+        Write-Step "Installing $($tool.Name)..."
+
+        # Check if already installed
+        if (Get-Command $tool.Name -ErrorAction SilentlyContinue) {
+            Write-Status "$($tool.Name) already installed" -Level Success
+            $installed += $tool.Name
+            continue
+        }
+
+        try {
+            $output = cargo binstall $tool.Name -y 2>&1
+
+            if ($LASTEXITCODE -eq 0) {
+                Write-Status "$($tool.Name) installed - $($tool.Description)" -Level Success
+                $installed += $tool.Name
+            } else {
+                Write-Status "$($tool.Name) installation failed" -Level Error
+                $failed += $tool.Name
+            }
+        } catch {
+            Write-Status "Failed to install $($tool.Name): $_" -Level Error
+            $failed += $tool.Name
+        }
+    }
+
+    Write-Host ""
+    Write-Status "Dev Tools Summary:" -Level Info
+    Write-Status "  Installed: $($installed.Count)" -Level Success
+    if ($failed.Count -gt 0) {
+        Write-Status "  Failed: $($failed.Count)" -Level Error
+        $failed | ForEach-Object { Write-Host "    - $_" -ForegroundColor Red }
+    }
+
+    return ($failed.Count -eq 0)
 }
 
 # ============================================================================
@@ -491,7 +639,7 @@ function Test-BinaryExecution {
         $output = & $BinaryPath --version 2>&1
 
         if ($LASTEXITCODE -eq 0) {
-            Write-Status "$Name: $output" -Level Success
+            Write-Status "${Name}: $output" -Level Success
             return $true
         } else {
             Write-Status "$Name failed version check" -Level Error
@@ -564,68 +712,302 @@ function Invoke-VerificationTests {
 }
 
 # ============================================================================
+# RELEASE AND PACKAGING
+# ============================================================================
+
+function Get-ProjectVersion {
+    <#
+    .SYNOPSIS
+        Extracts version from Cargo.toml or uses provided version
+
+    .DESCRIPTION
+        Reads version from the main workspace Cargo.toml or uses
+        the version parameter if provided
+    #>
+    param([string]$OverrideVersion)
+
+    if (-not [string]::IsNullOrWhiteSpace($OverrideVersion)) {
+        return $OverrideVersion
+    }
+
+    # Try to extract version from Cargo.toml
+    $cargoToml = Join-Path $Script:Config.RootDir "Cargo.toml"
+
+    if (Test-Path $cargoToml) {
+        $content = Get-Content $cargoToml -Raw
+        if ($content -match 'version\s*=\s*"([^"]+)"') {
+            return $matches[1]
+        }
+    }
+
+    # Fallback to git tag
+    try {
+        $gitTag = git describe --tags --abbrev=0 2>&1
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($gitTag)) {
+            return $gitTag.Trim()
+        }
+    } catch {
+        # Silently continue
+    }
+
+    # Default fallback
+    return "0.0.0-dev"
+}
+
+function New-ReleasePackage {
+    <#
+    .SYNOPSIS
+        Creates release packages for distribution
+
+    .DESCRIPTION
+        Builds release binaries and packages them into versioned ZIP archives
+        in the artifacts directory
+    #>
+    param([string]$Version)
+
+    Write-Section "Creating Release Packages"
+
+    $artifactsDir = Join-Path $Script:Config.RootDir "artifacts"
+
+    # Ensure artifacts directory exists
+    if (-not (Test-Path $artifactsDir)) {
+        New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
+        Write-Status "Created artifacts directory: $artifactsDir" -Level Info
+    }
+
+    $packaged = @()
+    $failed = @()
+
+    foreach ($binary in $Script:Config.RustBinaries) {
+        Write-Step "Packaging $($binary.Name)..."
+
+        # Determine binary path based on build profile
+        $binaryDir = if ($Script:Config.BuildProfile -eq 'debug') { 'debug' } else { $Script:Config.BuildProfile }
+        $binaryPath = Join-Path $Script:Config.CargoTargetDir "$binaryDir\$($binary.Binary)"
+
+        # Fallback to local target directory
+        if (-not (Test-Path $binaryPath)) {
+            $localBinaryPath = Join-Path $Script:Config.RootDir "$($binary.Path)\target\$binaryDir\$($binary.Binary)"
+            if (Test-Path $localBinaryPath) {
+                $binaryPath = $localBinaryPath
+            }
+        }
+
+        if (-not (Test-Path $binaryPath)) {
+            Write-Status "Binary not found: $($binary.Binary)" -Level Error
+            $failed += $binary.Name
+            continue
+        }
+
+        try {
+            # Create versioned package name
+            $packageName = "$($binary.Name)-$Version-x86_64-pc-windows-msvc.zip"
+            $packagePath = Join-Path $artifactsDir $packageName
+
+            # Remove existing package
+            if (Test-Path $packagePath) {
+                Remove-Item $packagePath -Force
+            }
+
+            # Create temporary directory for packaging
+            $tempDir = Join-Path $env:TEMP "$($binary.Name)-package"
+            if (Test-Path $tempDir) {
+                Remove-Item $tempDir -Recurse -Force
+            }
+            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+            # Copy binary
+            Copy-Item $binaryPath $tempDir -Force
+
+            # Copy README if exists
+            $readmePath = Join-Path $Script:Config.RootDir "$($binary.Path)\README.md"
+            if (Test-Path $readmePath) {
+                Copy-Item $readmePath $tempDir -Force
+            }
+
+            # Create ZIP archive
+            Compress-Archive -Path "$tempDir\*" -DestinationPath $packagePath -Force
+
+            # Verify package
+            if (Test-Path $packagePath) {
+                $size = (Get-Item $packagePath).Length
+                Write-Status "$packageName created ($([math]::Round($size/1KB, 2)) KB)" -Level Success
+                $packaged += $packagePath
+            } else {
+                Write-Status "Failed to create package: $packageName" -Level Error
+                $failed += $binary.Name
+            }
+
+            # Cleanup temp directory
+            if (Test-Path $tempDir) {
+                Remove-Item $tempDir -Recurse -Force
+            }
+
+        } catch {
+            Write-Status "Failed to package $($binary.Name): $_" -Level Error
+            $failed += $binary.Name
+        }
+    }
+
+    Write-Host ""
+    Write-Status "Packaging Summary:" -Level Info
+    Write-Status "  Packaged: $($packaged.Count)" -Level Success
+    if ($failed.Count -gt 0) {
+        Write-Status "  Failed: $($failed.Count)" -Level Error
+    }
+
+    if ($packaged.Count -gt 0) {
+        Write-Host ""
+        Write-Host "Release packages created in: $artifactsDir" -ForegroundColor Cyan
+        $packaged | ForEach-Object {
+            Write-Host "  - $(Split-Path $_ -Leaf)" -ForegroundColor Green
+        }
+    }
+
+    return ($failed.Count -eq 0)
+}
+
+function Update-Changelog {
+    <#
+    .SYNOPSIS
+        Generates or updates CHANGELOG.md using git-cliff
+
+    .DESCRIPTION
+        Uses git-cliff to generate a changelog from git history
+        Prepends unreleased changes to CHANGELOG.md
+    #>
+
+    Write-Section "Updating Changelog"
+
+    if (-not (Get-Command git-cliff -ErrorAction SilentlyContinue)) {
+        Write-Status "git-cliff not installed" -Level Warning
+        Write-Status "Install with: cargo binstall git-cliff -y" -Level Info
+        return $false
+    }
+
+    $changelogPath = Join-Path $Script:Config.RootDir "CHANGELOG.md"
+
+    try {
+        Write-Step "Generating changelog with git-cliff..."
+
+        # Generate unreleased changes and prepend to CHANGELOG.md
+        $output = git cliff --unreleased --prepend $changelogPath 2>&1
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Status "CHANGELOG.md updated successfully" -Level Success
+
+            # Display preview
+            if (Test-Path $changelogPath) {
+                Write-Host ""
+                Write-Host "Changelog preview (first 15 lines):" -ForegroundColor Cyan
+                Get-Content $changelogPath -Head 15 | ForEach-Object {
+                    Write-Host "  $_" -ForegroundColor DarkGray
+                }
+            }
+            return $true
+        } else {
+            Write-Status "git-cliff failed" -Level Error
+            $output | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+            return $false
+        }
+
+    } catch {
+        Write-Status "Failed to update changelog: $_" -Level Error
+        return $false
+    }
+}
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
 function Invoke-Build {
     Write-Host ""
-    Write-Host "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║        WezTerm Utilities - Master Build & Deploy             ║" -ForegroundColor Cyan
-    Write-Host "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "+================================================================+" -ForegroundColor Cyan
+    Write-Host "|        WezTerm Utilities - Master Build & Deploy              |" -ForegroundColor Cyan
+    Write-Host "+================================================================+" -ForegroundColor Cyan
     Write-Host ""
 
     $startTime = Get-Date
 
     try {
+        # Handle changelog generation request
+        if ($Changelog) {
+            Update-Changelog
+            return $true
+        }
+
         # Step 1: Prerequisites
         Test-Prerequisites
 
         # Step 2: Build Rust binaries
         $builtBinaries = Build-AllRustBinaries
 
-        # Step 3: Install binaries
-        Write-Section "Installing Binaries"
-        foreach ($binary in $Script:Config.RustBinaries) {
-            $sourcePath = $builtBinaries[$binary.Name]
-            Install-Binary -SourcePath $sourcePath -Name $binary.Name -DestinationDir $Script:Config.InstallPath
+        # Step 3: Install binaries (skip if only packaging)
+        if (-not $Package) {
+            Write-Section "Installing Binaries"
+            foreach ($binary in $Script:Config.RustBinaries) {
+                $sourcePath = $builtBinaries[$binary.Name]
+                Install-Binary -SourcePath $sourcePath -Name $binary.Name -DestinationDir $Script:Config.InstallPath
+            }
+
+            # Step 4: Install Lua modules
+            Install-LuaModules
+
+            # Step 5: Update WezTerm config
+            Update-WeztermConfig
+
+            # Step 6: Update PATH
+            Update-PathEnvironment
         }
 
-        # Step 4: Install Lua modules
-        Install-LuaModules
-
-        # Step 5: Update WezTerm config
-        Update-WeztermConfig
-
-        # Step 6: Update PATH
-        Update-PathEnvironment
-
         # Step 7: Verification tests
-        if (-not $SkipTests) {
+        if (-not $SkipTests -and -not $Package) {
             $testsPasseed = Invoke-VerificationTests
 
             if (-not $testsPasseed) {
                 Write-Status "Some verification tests failed" -Level Warning
             }
         } else {
-            Write-Status "Skipping verification tests" -Level Warning
+            if ($SkipTests) {
+                Write-Status "Skipping verification tests" -Level Warning
+            }
+        }
+
+        # Step 8: Create release packages if requested
+        if ($Release -or $Package) {
+            $projectVersion = Get-ProjectVersion -OverrideVersion $Version
+
+            if (-not (New-ReleasePackage -Version $projectVersion)) {
+                Write-Status "Package creation had errors" -Level Warning
+            }
         }
 
         # Success summary
         $duration = (Get-Date) - $startTime
         Write-Section "Build Complete"
-        Write-Status "All components built and installed successfully" -Level Success
+
+        if ($Package) {
+            Write-Status "Release packages created successfully" -Level Success
+        } else {
+            Write-Status "All components built and installed successfully" -Level Success
+        }
+
         Write-Status "Total time: $($duration.TotalSeconds.ToString('F2')) seconds" -Level Info
         Write-Host ""
-        Write-Status "Installation directory: $($Script:Config.InstallPath)" -Level Info
-        Write-Status "Restart your terminal to use the new PATH" -Level Info
-        Write-Host ""
 
-        # Print installed binaries
-        Write-Host "Installed binaries:" -ForegroundColor Cyan
-        foreach ($binary in $Script:Config.RustBinaries) {
-            Write-Host "  - $($binary.Binary)" -ForegroundColor Green
+        if (-not $Package) {
+            Write-Status "Installation directory: $($Script:Config.InstallPath)" -Level Info
+            Write-Status "Restart your terminal to use the new PATH" -Level Info
+            Write-Host ""
+
+            # Print installed binaries
+            Write-Host "Installed binaries:" -ForegroundColor Cyan
+            foreach ($binary in $Script:Config.RustBinaries) {
+                Write-Host "  - $($binary.Binary)" -ForegroundColor Green
+            }
+            Write-Host ""
         }
-        Write-Host ""
 
         return $true
 

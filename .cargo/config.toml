@@ -1,20 +1,77 @@
+# ============================================================================
+# WezTerm Cargo Configuration
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# MinGW Toolchain Configuration
+# ----------------------------------------------------------------------------
 [target.x86_64-pc-windows-gnu]
 linker = "x86_64-w64-mingw32-gcc"
 ar = "x86_64-w64-mingw32-gcc-ar"
 
+# ----------------------------------------------------------------------------
+# Windows MSVC Optimizations
+# ----------------------------------------------------------------------------
 # We need openssl to be statically linked on windows to avoid madness,
 # and openssl-src does that based on the crt-static feature being
 # enabled for the target, so let's turn that on here.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 
-#[build]
+# ----------------------------------------------------------------------------
+# Build Configuration
+# ----------------------------------------------------------------------------
+[build]
 # Global rustc-wrapper removed; we now set RUSTC_WRAPPER selectively in Justfile tasks
+# to avoid issues with clippy probe (-vV) failures when using sccache
+incremental = true                 # Enable incremental compilation by default
+# jobs = 8                         # Uncomment to override auto-detected parallelism
 
+# Shared target directory for all workspace projects
+# Reduces disk usage and improves build times via shared artifacts
+# target-dir = "C:/Users/david/.cargo/shared-target"  # Uncomment if desired
+
+# ----------------------------------------------------------------------------
+# Profile-Specific Settings
+# ----------------------------------------------------------------------------
+[profile.dev]
+incremental = true                 # Fast iterative builds during development
+
+[profile.release]
+incremental = false                # Disable for release builds (better optimization)
+lto = "thin"                       # Thin LTO for better optimization with reasonable compile time
+
+# ----------------------------------------------------------------------------
+# Sccache Configuration
+# ----------------------------------------------------------------------------
 [env]
 SCCACHE_SERVER_PORT = "4226"
 SCCACHE_CACHE_COMPRESSION = "zstd"
 SCCACHE_CACHE_SIZE = "30G"
+
+# Primary cache location on T: drive (high-speed storage)
+# Fallback: If T: drive unavailable, set SCCACHE_DIR environment variable to:
+#   Windows: $env:USERPROFILE\.cache\sccache (PowerShell)
+#   Unix:    ~/.cache/sccache
 SCCACHE_DIR = "T:/RustCache/sccache"
+
+# Alternative fallback paths (uncomment if T: drive not available):
+# SCCACHE_DIR = { value = "${USERPROFILE}/.cache/sccache", force = true }  # Windows
+# SCCACHE_DIR = { value = "${HOME}/.cache/sccache", force = true }         # Unix/WSL
+
+# ----------------------------------------------------------------------------
+# Cargo Aliases
+# ----------------------------------------------------------------------------
+[alias]
+b = "build"
+c = "check"
+r = "run"
+t = "test"
+nt = "nextest run"                 # Requires cargo-nextest installation
+br = "build --release"
+cr = "check --release"
+cw = "check --workspace"
+tw = "test --workspace"
+bw = "build --workspace"
 
 

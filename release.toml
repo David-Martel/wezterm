@@ -1,0 +1,15 @@
+[workspace]
+allow-branch = ["main"]
+consolidate-commits = true
+consolidate-pushes = true
+
+[[package]]
+name = "wezterm-fs-explorer"
+changelog-path = "wezterm-fs-explorer/CHANGELOG.md"
+
+[[package]]
+name = "wezterm-watch"
+changelog-path = "wezterm-watch/CHANGELOG.md"
+
+[changelog]
+body-format = "- {{subject}} ([{{id}}]({{link}}))"
