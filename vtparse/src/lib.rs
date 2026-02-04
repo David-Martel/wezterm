@@ -336,7 +336,7 @@ impl OscState {
             }
         } else if !self.full {
             let mut buf = [0u8; 8];
-            let extend_result = self
+            self
                 .buffer
                 .extend_from_slice(param.encode_utf8(&mut buf).as_bytes());
 
@@ -348,7 +348,7 @@ impl OscState {
                 }
             }
 
-            let _ = extend_result;
+            ();
 
             if self.num_params == 0 {
                 self.num_params = 1;

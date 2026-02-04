@@ -202,7 +202,7 @@ fn callback_behavior() -> glium::debug::DebugCallbackBehavior {
 }
 
 impl HasDisplayHandle for WindowInner {
-    fn display_handle(&self) -> Result<DisplayHandle, HandleError> {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
         unsafe {
             Ok(DisplayHandle::borrow_raw(RawDisplayHandle::Windows(
                 WindowsDisplayHandle::new(),
@@ -212,7 +212,7 @@ impl HasDisplayHandle for WindowInner {
 }
 
 impl HasWindowHandle for WindowInner {
-    fn window_handle(&self) -> Result<WindowHandle, HandleError> {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
         let mut handle =
             Win32WindowHandle::new(NonZeroIsize::new(self.hwnd.0 as _).expect("non-zero"));
         handle.hinstance = NonZeroIsize::new(unsafe { GetModuleHandleW(null()) } as _);
@@ -580,7 +580,7 @@ impl Window {
 
         conn.windows
             .borrow_mut()
-            .insert(hwnd.clone(), Rc::clone(&inner));
+            .insert(hwnd, Rc::clone(&inner));
 
         Ok(window_handle)
     }
@@ -735,7 +735,7 @@ impl WindowInner {
 }
 
 impl HasDisplayHandle for Window {
-    fn display_handle(&self) -> Result<DisplayHandle, HandleError> {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
         unsafe {
             Ok(DisplayHandle::borrow_raw(RawDisplayHandle::Windows(
                 WindowsDisplayHandle::new(),
@@ -745,7 +745,7 @@ impl HasDisplayHandle for Window {
 }
 
 impl HasWindowHandle for Window {
-    fn window_handle(&self) -> Result<WindowHandle, HandleError> {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
         let conn = Connection::get().expect("raw_window_handle only callable on main thread");
         let handle = conn.get_window(self.0).expect("window handle invalid!?");
 
@@ -996,19 +996,15 @@ impl WindowOps for Window {
         let top_border_color = if has_focus {
             if use_accent == 1 {
                 wuicolor_to_linearrgba(settings.GetColorValue(UIColorType::Accent)?)
+            } else if *IS_WIN10 {
+                LinearRgba(0.01, 0.01, 0.01, 0.67)
             } else {
-                if *IS_WIN10 {
-                    LinearRgba(0.01, 0.01, 0.01, 0.67)
-                } else {
-                    LinearRgba(0.026, 0.026, 0.026, 0.5)
-                }
+                LinearRgba(0.026, 0.026, 0.026, 0.5)
             }
+        } else if *IS_WIN10 {
+            LinearRgba(0.024, 0.024, 0.024, 0.5)
         } else {
-            if *IS_WIN10 {
-                LinearRgba(0.024, 0.024, 0.024, 0.5)
-            } else {
-                LinearRgba(0.028, 0.028, 0.028, 0.5)
-            }
+            LinearRgba(0.028, 0.028, 0.028, 0.5)
         };
 
         const BASE_BORDER: ULength = ULength::new(0);
@@ -1632,7 +1628,7 @@ unsafe fn wm_paint(hwnd: HWND, _msg: UINT, _wparam: WPARAM, _lparam: LPARAM) -> 
     };
     let _ = BeginPaint(hwnd, &mut ps);
     // Do nothing right now
-    EndPaint(hwnd, &mut ps);
+    EndPaint(hwnd, &ps);
 
     inner.invalidated = false;
     // Ask the app to repaint in a bit
@@ -2451,8 +2447,7 @@ impl KeyboardLayoutInfo {
             {
                 if let Some(c) = dead
                     .map
-                    .get(&(Self::fixup_mods(key.0), key.1 as u8))
-                    .map(|&c| c)
+                    .get(&(Self::fixup_mods(key.0), key.1 as u8)).copied()
                 {
                     ResolvedDeadKey::Combined(c)
                 } else {

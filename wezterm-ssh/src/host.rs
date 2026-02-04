@@ -1,6 +1,4 @@
-use crate::session::SessionEvent;
-use anyhow::Context;
-use smol::channel::{bounded, Sender};
+use smol::channel::Sender;
 
 #[derive(Debug, thiserror::Error)]
 #[error("host key mismatch for ssh server {remote_address}. Got fingerprint {key} instead of the expected value from your known hosts file {file:?}.")]

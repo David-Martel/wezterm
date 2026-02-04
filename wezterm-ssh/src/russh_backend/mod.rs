@@ -80,7 +80,6 @@ mod sftp;
 #[cfg(test)]
 mod tests;
 
-pub use handler::WezTermHandler;
 pub use session::RusshSession;
 pub use channel::RusshChannel;
 pub use sftp::{RusshSftp, RusshFile, RusshDir};

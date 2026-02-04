@@ -63,16 +63,12 @@ impl ChannelWrap {
             Self::Russh(chan) => {
                 if let Some(signal) = chan.exit_signal() {
                     Some(ExitStatus::with_signal(signal))
-                } else if let Some(status) = chan.exit_status() {
-                    Some(ExitStatus::with_exit_code(status))
-                } else {
-                    None
-                }
+                } else { chan.exit_status().map(ExitStatus::with_exit_code) }
             }
         }
     }
 
-    pub fn reader(&mut self, idx: usize) -> Box<dyn std::io::Read + '_> {
+    pub fn reader(&mut self, _idx: usize) -> Box<dyn std::io::Read + '_> {
         match self {
             #[cfg(feature = "ssh2")]
             Self::Ssh2(chan) => Box::new(chan.stream(idx as i32)),

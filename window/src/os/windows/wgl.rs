@@ -152,7 +152,7 @@ pub struct GlState {
 }
 
 fn has_extension(extensions: &str, wanted: &str) -> bool {
-    extensions.split(' ').find(|&ext| ext == wanted).is_some()
+    extensions.split(' ').any(|ext| ext == wanted)
 }
 
 impl GlState {

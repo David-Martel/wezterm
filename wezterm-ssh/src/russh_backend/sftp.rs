@@ -124,8 +124,7 @@ impl RusshSftp {
         let file = session
             .open_with_flags_and_attributes(path.as_str(), flags, attrs)
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP open error: {}", e),
             )))?;
 
@@ -140,8 +139,7 @@ impl RusshSftp {
         session
             .symlink(path.as_str(), target.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP symlink error: {}", e),
             )))
     }
@@ -152,8 +150,7 @@ impl RusshSftp {
         let target = session
             .read_link(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP read_link error: {}", e),
             )))?;
 
@@ -166,8 +163,7 @@ impl RusshSftp {
         let canonical = session
             .canonicalize(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP canonicalize error: {}", e),
             )))?;
 
@@ -180,8 +176,7 @@ impl RusshSftp {
         session
             .remove_file(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP unlink error: {}", e),
             )))
     }
@@ -192,8 +187,7 @@ impl RusshSftp {
         session
             .remove_dir(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP remove_dir error: {}", e),
             )))
     }
@@ -211,8 +205,7 @@ impl RusshSftp {
         session
             .create_dir(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP create_dir error: {}", e),
             )))?;
 
@@ -233,8 +226,7 @@ impl RusshSftp {
         session
             .rename(src.as_str(), dest.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP rename error: {}", e),
             )))
     }
@@ -245,8 +237,7 @@ impl RusshSftp {
         let attrs = session
             .metadata(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP metadata error: {}", e),
             )))?;
 
@@ -259,8 +250,7 @@ impl RusshSftp {
         let attrs = session
             .symlink_metadata(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP symlink_metadata error: {}", e),
             )))?;
 
@@ -275,8 +265,7 @@ impl RusshSftp {
         session
             .set_metadata(path.as_str(), attrs)
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP set_metadata error: {}", e),
             )))
     }
@@ -287,8 +276,7 @@ impl RusshSftp {
         let read_dir = session
             .read_dir(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP read_dir error: {}", e),
             )))?;
 
@@ -313,8 +301,7 @@ impl RusshSftp {
         let read_dir = session
             .read_dir(path.as_str())
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP open_dir error: {}", e),
             )))?;
 
@@ -326,7 +313,7 @@ impl RusshSftp {
                 if name == "." || name == ".." {
                     None
                 } else {
-                    Some((Utf8PathBuf::from(path.join(&name)), convert_file_attributes(entry.metadata())))
+                    Some((path.join(&name), convert_file_attributes(entry.metadata())))
                 }
             })
             .collect();
@@ -361,16 +348,14 @@ impl RusshFile {
     pub async fn read(&self, buf: &mut [u8]) -> SftpChannelResult<usize> {
         let mut guard = self.inner.lock().await;
         let file = guard.as_mut().ok_or_else(|| {
-            SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SftpChannelError::from(std::io::Error::other(
                 "File already closed",
             ))
         })?;
 
         file.read(buf)
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP read error: {}", e),
             )))
     }
@@ -379,16 +364,14 @@ impl RusshFile {
     pub async fn write(&self, buf: &[u8]) -> SftpChannelResult<usize> {
         let mut guard = self.inner.lock().await;
         let file = guard.as_mut().ok_or_else(|| {
-            SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SftpChannelError::from(std::io::Error::other(
                 "File already closed",
             ))
         })?;
 
         file.write(buf)
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP write error: {}", e),
             )))
     }
@@ -397,16 +380,14 @@ impl RusshFile {
     pub async fn flush(&self) -> SftpChannelResult<()> {
         let mut guard = self.inner.lock().await;
         let file = guard.as_mut().ok_or_else(|| {
-            SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SftpChannelError::from(std::io::Error::other(
                 "File already closed",
             ))
         })?;
 
         file.flush()
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP flush error: {}", e),
             )))
     }
@@ -415,16 +396,14 @@ impl RusshFile {
     pub async fn seek(&self, pos: std::io::SeekFrom) -> SftpChannelResult<u64> {
         let mut guard = self.inner.lock().await;
         let file = guard.as_mut().ok_or_else(|| {
-            SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SftpChannelError::from(std::io::Error::other(
                 "File already closed",
             ))
         })?;
 
         file.seek(pos)
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP seek error: {}", e),
             )))
     }
@@ -433,8 +412,7 @@ impl RusshFile {
     pub async fn metadata(&self) -> SftpChannelResult<Metadata> {
         let guard = self.inner.lock().await;
         let file = guard.as_ref().ok_or_else(|| {
-            SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SftpChannelError::from(std::io::Error::other(
                 "File already closed",
             ))
         })?;
@@ -442,8 +420,7 @@ impl RusshFile {
         let attrs = file
             .metadata()
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP metadata error: {}", e),
             )))?;
 
@@ -454,8 +431,7 @@ impl RusshFile {
     pub async fn set_metadata(&self, metadata: Metadata) -> SftpChannelResult<()> {
         let guard = self.inner.lock().await;
         let file = guard.as_ref().ok_or_else(|| {
-            SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            SftpChannelError::from(std::io::Error::other(
                 "File already closed",
             ))
         })?;
@@ -463,8 +439,7 @@ impl RusshFile {
         let attrs = convert_metadata_to_attrs(metadata);
         file.set_metadata(attrs)
             .await
-            .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            .map_err(|e| SftpChannelError::from(std::io::Error::other(
                 format!("SFTP set_metadata error: {}", e),
             )))
     }

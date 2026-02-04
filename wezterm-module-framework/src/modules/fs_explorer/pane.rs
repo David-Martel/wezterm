@@ -261,7 +261,7 @@ impl FsExplorerPane {
     fn render_to_terminal(&self) {
         let mut term = self.terminal.lock();
         let state = self.state.lock();
-        let dims = terminal_get_dimensions(&mut *term);
+        let dims = terminal_get_dimensions(&mut term);
 
         // Calculate viewport
         let header_lines = 2; // Title + separator
@@ -474,8 +474,8 @@ impl Pane for FsExplorerPane {
 
     fn resize(&self, size: TerminalSize) -> Result<()> {
         self.input_tx.send(FsExplorerInput::Resize {
-            rows: size.rows as usize,
-            cols: size.cols as usize,
+            rows: size.rows,
+            cols: size.cols,
         })?;
 
         self.terminal.lock().resize(size);

@@ -101,6 +101,12 @@ pub struct Enum<T> {
 // need to be Send.
 unsafe impl<T> Send for Enum<T> {}
 
+impl<T> Default for Enum<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> Enum<T> {
     pub fn new() -> Self {
         Self {
@@ -140,7 +146,7 @@ where
                     deprecated_fields: UnknownFieldAction::Ignore,
                 },
             ) {
-                return Ok(field.into_lua(lua)?);
+                return field.into_lua(lua);
             }
 
             // Step 2: see if this is a valid variant, and whether we can
@@ -170,7 +176,7 @@ where
                             )?;
 
                             t.set_metatable(Some(mt));
-                            return Ok(Value::Table(t));
+                            Ok(Value::Table(t))
                         }
                         wat => Err(mlua::Error::external(format!(
                             "unexpected type {}",

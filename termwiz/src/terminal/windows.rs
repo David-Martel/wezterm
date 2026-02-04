@@ -770,7 +770,7 @@ impl Terminal for WindowsTerminal {
         })
     }
 
-    fn probe_capabilities(&mut self) -> Option<ProbeCapabilities> {
+    fn probe_capabilities(&mut self) -> Option<ProbeCapabilities<'_>> {
         Some(ProbeCapabilities::new(
             &mut self.input_handle,
             &mut self.output_handle,
@@ -828,7 +828,7 @@ impl Terminal for WindowsTerminal {
                         wait.map(|wait| wait.as_millis() as u32).unwrap_or(INFINITE),
                     )
                 };
-                if result == WAIT_OBJECT_0 + 0 {
+                if result == WAIT_OBJECT_0 {
                     pending = self.input_handle.get_number_of_input_events()?;
                 } else if result == WAIT_OBJECT_0 + 1 {
                     return Ok(Some(InputEvent::Wake));

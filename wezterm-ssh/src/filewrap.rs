@@ -1,5 +1,5 @@
 use crate::sftp::types::Metadata;
-use crate::sftp::{SftpChannelError, SftpChannelResult};
+use crate::sftp::SftpChannelResult;
 
 #[cfg(feature = "russh")]
 use crate::russh_backend::{block_on, RusshFile};
@@ -25,7 +25,7 @@ struct RusshFileReader<'a> {
 impl<'a> std::io::Read for RusshFileReader<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         block_on(self.file.read(buf)).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+            std::io::Error::other(e.to_string())
         })
     }
 }
@@ -40,13 +40,13 @@ struct RusshFileWriter<'a> {
 impl<'a> std::io::Write for RusshFileWriter<'a> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         block_on(self.file.write(buf)).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+            std::io::Error::other(e.to_string())
         })
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
         block_on(self.file.flush()).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+            std::io::Error::other(e.to_string())
         })
     }
 }

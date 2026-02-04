@@ -528,25 +528,23 @@ impl SessionInner {
                                 state.fd.take();
                             }
                         }
+                    } else if info.exited && state.buf.is_empty() {
+                        log::trace!("channel {channel_id} exited and we have no data to send to fd {fd_num}: close it!");
+                        state.fd.take();
                     } else {
-                        if info.exited && state.buf.is_empty() {
-                            log::trace!("channel {channel_id} exited and we have no data to send to fd {fd_num}: close it!");
-                            state.fd.take();
-                        } else {
-                            // We can write our buffered output
-                            match write_from_buf(fd, &mut state.buf) {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    log::debug!(
-                                        "error while writing to channel {} fd {}: {:#}",
-                                        channel_id,
-                                        fd_num,
-                                        err
-                                    );
+                        // We can write our buffered output
+                        match write_from_buf(fd, &mut state.buf) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                log::debug!(
+                                    "error while writing to channel {} fd {}: {:#}",
+                                    channel_id,
+                                    fd_num,
+                                    err
+                                );
 
-                                    // Close it out
-                                    state.fd.take();
-                                }
+                                // Close it out
+                                state.fd.take();
                             }
                         }
                     }
@@ -1073,8 +1071,7 @@ impl SessionInner {
                 if sess.sftp.is_none() {
                     // Open SFTP channel via russh
                     let sftp = crate::russh_backend::block_on(sess.sess.open_sftp())
-                        .map_err(|e| SftpChannelError::from(std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        .map_err(|e| SftpChannelError::from(std::io::Error::other(
                             format!("Failed to open SFTP channel: {}", e),
                         )))?;
                     sess.sftp = Some(SftpWrap::Russh(sftp));

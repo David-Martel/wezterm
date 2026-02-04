@@ -144,7 +144,7 @@ pub fn parse_log_font(log_font: &LOGFONTW, hdc: HDC) -> anyhow::Result<(ParsedFo
         let source = source?;
 
         let point_size = MulDiv(-log_font.lfHeight, 72, GetDeviceCaps(hdc, LOGPIXELSY)) as f64;
-        let pixel_size = log_font.lfHeight.abs() as u16;
+        let pixel_size = log_font.lfHeight.unsigned_abs() as u16;
 
         let mut attr = FontAttributes::new(&name);
         attr.weight = config::FontWeight::from_opentype_weight(log_font.lfWeight as u16);
@@ -182,7 +182,7 @@ fn handle_from_descriptor(
     descriptor: &FontDescriptor,
     pixel_size: u16,
 ) -> Option<ParsedFont> {
-    let font = collection.get_font_from_descriptor(&descriptor)?;
+    let font = collection.get_font_from_descriptor(descriptor)?;
     let face = font.create_font_face();
     for file in face.get_files() {
         if let Some(path) = file.get_font_file_path() {

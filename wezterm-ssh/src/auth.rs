@@ -1,6 +1,4 @@
-use crate::session::SessionEvent;
-use anyhow::Context;
-use smol::channel::{bounded, Sender};
+use smol::channel::Sender;
 
 #[derive(Debug)]
 pub struct AuthenticationPrompt {
