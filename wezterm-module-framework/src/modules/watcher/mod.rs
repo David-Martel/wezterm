@@ -10,9 +10,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use config::lua::get_or_create_sub_module;
 use crossbeam::channel::{bounded, Receiver, Sender};
+use mlua::RegistryKey;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use wezterm_fs_utils::watcher::{WatchEvent, Watcher};
@@ -20,62 +22,47 @@ use wezterm_fs_utils::watcher::{WatchEvent, Watcher};
 /// A callback ID for managing watch subscriptions.
 pub type WatchCallbackId = u64;
 
-/// A watch subscription.
+/// A watch subscription with optional Lua callback.
 struct WatchSubscription {
+    #[allow(dead_code)]
     path: PathBuf,
     watcher: Watcher,
     #[allow(dead_code)]
     recursive: bool,
+    /// Lua registry key for the callback function (if registered via Lua)
+    lua_callback: Option<RegistryKey>,
 }
 
-/// File watcher module.
-///
-/// Provides background file watching capabilities that can be accessed
-/// via Lua API.
-pub struct WatcherModule {
-    state: ModuleState,
+/// Shared state that can be accessed from Lua closures.
+#[derive(Clone)]
+pub struct WatcherModuleHandle {
     subscriptions: Arc<Mutex<HashMap<WatchCallbackId, WatchSubscription>>>,
-    next_id: std::sync::atomic::AtomicU64,
-    event_tx: Option<Sender<(WatchCallbackId, WatchEvent)>>,
-    event_rx: Option<Receiver<(WatchCallbackId, WatchEvent)>>,
-    shutdown_tx: Option<Sender<()>>,
+    next_id: Arc<AtomicU64>,
+    event_tx: Arc<Mutex<Option<Sender<(WatchCallbackId, WatchEvent)>>>>,
+    lua_callbacks: Arc<Mutex<HashMap<WatchCallbackId, RegistryKey>>>,
 }
 
-impl WatcherModule {
-    /// Create a new watcher module.
-    pub fn new() -> Self {
-        let (event_tx, event_rx) = bounded(1024);
-
-        Self {
-            state: ModuleState::Registered,
-            subscriptions: Arc::new(Mutex::new(HashMap::new())),
-            next_id: std::sync::atomic::AtomicU64::new(1),
-            event_tx: Some(event_tx),
-            event_rx: Some(event_rx),
-            shutdown_tx: None,
-        }
-    }
-
-    /// Watch a path for changes.
-    pub fn watch(
+impl WatcherModuleHandle {
+    /// Watch a path and register a Lua callback.
+    pub fn watch_with_callback(
         &self,
         path: PathBuf,
         recursive: bool,
         use_gitignore: bool,
+        lua_callback: Option<RegistryKey>,
     ) -> Result<WatchCallbackId> {
-        let id = self
-            .next_id
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
 
         let mut watcher = Watcher::new(path.clone(), 100, use_gitignore, vec![])?;
         let _handle = watcher.watch(recursive)?;
 
         // Clone the receiver for forwarding events
         let watcher_rx = watcher.receiver().clone();
-        let event_tx = self.event_tx.clone();
+        let event_tx_lock = self.event_tx.lock();
 
         // Spawn a thread to forward events from this watcher
-        if let Some(tx) = event_tx {
+        if let Some(ref tx) = *event_tx_lock {
+            let tx = tx.clone();
             thread::spawn(move || {
                 while let Ok(event) = watcher_rx.recv() {
                     if tx.send((id, event)).is_err() {
@@ -85,12 +72,20 @@ impl WatcherModule {
             });
         }
 
+        // Store the Lua callback if provided
+        if let Some(ref key) = lua_callback {
+            self.lua_callbacks
+                .lock()
+                .insert(id, unsafe { std::ptr::read(key) });
+        }
+
         self.subscriptions.lock().insert(
             id,
             WatchSubscription {
                 path,
                 watcher,
                 recursive,
+                lua_callback,
             },
         );
 
@@ -103,6 +98,8 @@ impl WatcherModule {
         let mut subs = self.subscriptions.lock();
         if let Some(mut sub) = subs.remove(&id) {
             sub.watcher.unwatch()?;
+            // Remove Lua callback reference
+            self.lua_callbacks.lock().remove(&id);
             log::debug!("Removed watch subscription {}", id);
         }
         Ok(())
@@ -111,6 +108,62 @@ impl WatcherModule {
     /// Get the number of active subscriptions.
     pub fn subscription_count(&self) -> usize {
         self.subscriptions.lock().len()
+    }
+}
+
+/// File watcher module.
+///
+/// Provides background file watching capabilities that can be accessed
+/// via Lua API.
+pub struct WatcherModule {
+    state: ModuleState,
+    handle: WatcherModuleHandle,
+    event_rx: Option<Receiver<(WatchCallbackId, WatchEvent)>>,
+    shutdown_tx: Option<Sender<()>>,
+}
+
+impl WatcherModule {
+    /// Create a new watcher module.
+    pub fn new() -> Self {
+        let (event_tx, event_rx) = bounded(1024);
+
+        Self {
+            state: ModuleState::Registered,
+            handle: WatcherModuleHandle {
+                subscriptions: Arc::new(Mutex::new(HashMap::new())),
+                next_id: Arc::new(AtomicU64::new(1)),
+                event_tx: Arc::new(Mutex::new(Some(event_tx))),
+                lua_callbacks: Arc::new(Mutex::new(HashMap::new())),
+            },
+            event_rx: Some(event_rx),
+            shutdown_tx: None,
+        }
+    }
+
+    /// Get a handle that can be shared with Lua closures.
+    pub fn handle(&self) -> WatcherModuleHandle {
+        self.handle.clone()
+    }
+
+    /// Watch a path for changes.
+    pub fn watch(
+        &self,
+        path: PathBuf,
+        recursive: bool,
+        use_gitignore: bool,
+    ) -> Result<WatchCallbackId> {
+        self.handle
+            .watch_with_callback(path, recursive, use_gitignore, None)
+    }
+
+    /// Stop watching a path.
+    pub fn unwatch(&self, id: WatchCallbackId) -> Result<()> {
+        self.handle.unwatch(id)
+    }
+
+    /// Get the number of active subscriptions.
+    pub fn subscription_count(&self) -> usize {
+        self.handle.subscription_count()
     }
 }
 
@@ -164,6 +217,9 @@ impl Module for WatcherModule {
         let event_rx = self.event_rx.take();
 
         // Spawn event processing thread
+        // Note: Lua callback invocation requires the Lua runtime context,
+        // which is not available in this background thread. Events are logged
+        // and could be forwarded to the GUI thread via Mux notifications.
         if let Some(rx) = event_rx {
             thread::spawn(move || {
                 loop {
@@ -176,12 +232,23 @@ impl Module for WatcherModule {
                     // Process events with timeout
                     match rx.recv_timeout(std::time::Duration::from_millis(100)) {
                         Ok((id, event)) => {
-                            log::debug!(
-                                "Watch event from subscription {}: {:?}",
-                                id,
-                                event.kind
-                            );
-                            // TODO: Forward to Lua callbacks
+                            // Log the event with full details
+                            if let Some(ref path) = event.path {
+                                log::info!(
+                                    "File watch event [subscription {}]: {:?} - {}",
+                                    id,
+                                    event.kind,
+                                    path.display()
+                                );
+                            } else {
+                                log::info!(
+                                    "File watch event [subscription {}]: {:?}",
+                                    id,
+                                    event.kind
+                                );
+                            }
+                            // Events can be forwarded to GUI via MuxNotification system
+                            // or through a dedicated event channel to the Lua runtime
                         }
                         Err(crossbeam::channel::RecvTimeoutError::Timeout) => continue,
                         Err(crossbeam::channel::RecvTimeoutError::Disconnected) => break,
@@ -203,11 +270,17 @@ impl Module for WatcherModule {
         }
 
         // Clear all subscriptions
-        let mut subs = self.subscriptions.lock();
+        let mut subs = self.handle.subscriptions.lock();
         for (id, mut sub) in subs.drain() {
             log::debug!("Cleaning up watch subscription {}", id);
             let _ = sub.watcher.unwatch();
         }
+
+        // Clear lua callbacks
+        self.handle.lua_callbacks.lock().clear();
+
+        // Clear the event sender
+        *self.handle.event_tx.lock() = None;
 
         self.state = ModuleState::Stopped;
         Ok(())
@@ -216,24 +289,79 @@ impl Module for WatcherModule {
     fn register_lua_api(&self, lua: &mlua::Lua) -> Result<()> {
         let watcher_mod = get_or_create_sub_module(lua, "watcher")?;
 
-        // wezterm.watcher.watch(path, callback)
-        // Note: Full Lua callback implementation would require more infrastructure
-        // For now, provide a placeholder that logs usage
+        // Get a handle that can be moved into Lua closures
+        let handle = self.handle();
+
+        // wezterm.watcher.watch(path, options)
+        // options: { recursive = true/false, gitignore = true/false }
+        // Returns: watch_id (number)
+        let watch_handle = handle.clone();
         watcher_mod.set(
             "watch",
-            lua.create_function(|_, (path, _recursive): (String, Option<bool>)| {
-                log::info!("Lua: watcher.watch called for path: {}", path);
-                // Return a dummy ID for now
-                Ok(0u64)
+            lua.create_function(
+                move |_, (path, options): (String, Option<mlua::Table>)| {
+                    let recursive = options
+                        .as_ref()
+                        .and_then(|t| t.get::<_, bool>("recursive").ok())
+                        .unwrap_or(true);
+                    let use_gitignore = options
+                        .as_ref()
+                        .and_then(|t| t.get::<_, bool>("gitignore").ok())
+                        .unwrap_or(true);
+
+                    let path_buf = PathBuf::from(&path);
+                    match watch_handle.watch_with_callback(path_buf, recursive, use_gitignore, None)
+                    {
+                        Ok(id) => {
+                            log::info!(
+                                "Lua: Started watching '{}' (recursive={}, gitignore={}) -> id {}",
+                                path,
+                                recursive,
+                                use_gitignore,
+                                id
+                            );
+                            Ok(id)
+                        }
+                        Err(e) => {
+                            log::error!("Lua: Failed to watch '{}': {}", path, e);
+                            Err(mlua::Error::RuntimeError(format!(
+                                "Failed to watch path: {}",
+                                e
+                            )))
+                        }
+                    }
+                },
+            )?,
+        )?;
+
+        // wezterm.watcher.unwatch(watch_id)
+        // Stops watching the path associated with watch_id
+        let unwatch_handle = handle.clone();
+        watcher_mod.set(
+            "unwatch",
+            lua.create_function(move |_, id: u64| {
+                match unwatch_handle.unwatch(id) {
+                    Ok(()) => {
+                        log::info!("Lua: Stopped watching id {}", id);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        log::error!("Lua: Failed to unwatch id {}: {}", id, e);
+                        Err(mlua::Error::RuntimeError(format!(
+                            "Failed to unwatch: {}",
+                            e
+                        )))
+                    }
+                }
             })?,
         )?;
 
+        // wezterm.watcher.count()
+        // Returns the number of active watch subscriptions
+        let count_handle = handle;
         watcher_mod.set(
-            "unwatch",
-            lua.create_function(|_, id: u64| {
-                log::info!("Lua: watcher.unwatch called for id: {}", id);
-                Ok(())
-            })?,
+            "count",
+            lua.create_function(move |_, ()| Ok(count_handle.subscription_count()))?,
         )?;
 
         Ok(())
