@@ -1,10 +1,77 @@
 {
   "contexts": [
     {
+      "id": "ctx-wezterm-build-20260204",
+      "project": "WezTerm Terminal Emulator",
+      "repository": "github.com/david-t-martel/wezterm",
+      "timestamp": "2026-02-04T06:00:00Z",
+      "file": "wezterm-context-2026-02-04-build-enhancements.md",
+      "summary": "Comprehensive build framework enhancement with Windows/WSL focus",
+      "key_achievements": [
+        "Migrated git2 to pure-Rust gix (both utilities)",
+        "UDS Windows IPC implementation (uds_windows)",
+        "WSL path translation utilities",
+        "Shell detection and command translation",
+        "Fuzzy search with nucleo crate",
+        "cargo-binstall and cargo-smart-release integration",
+        "Justfile enhanced to 32 targets",
+        "Windows CI workflow created",
+        "build-all.ps1 release features"
+      ],
+      "active_work": [
+        "New modules not yet integrated into main app",
+        "Dead-code warnings for unused exports"
+      ],
+      "next_steps": [
+        "Integration tests for new modules",
+        "Security audit of IPC and path translation",
+        "Performance profiling of fuzzy search",
+        "Update README with new features"
+      ],
+      "technologies": [
+        "Rust",
+        "gix (pure Rust git)",
+        "nucleo (fuzzy search)",
+        "uds_windows (Unix Domain Sockets)",
+        "cargo-binstall",
+        "cargo-smart-release",
+        "git-cliff"
+      ],
+      "agents_used": [
+        "rust-pro (x6)",
+        "code-reviewer",
+        "deployment-engineer",
+        "powershell-pro"
+      ],
+      "test_results": {
+        "wezterm-fs-explorer": 108,
+        "wezterm-watch": 74,
+        "total": 182,
+        "status": "all_passed"
+      },
+      "quick_restore": {
+        "working_directory": "C:\\Users\\david\\wezterm",
+        "branch": "main",
+        "commit": "dbe154194",
+        "build_command": "just build-utils",
+        "test_command": "just test-nextest",
+        "key_files": [
+          "wezterm-fs-explorer/src/ipc.rs",
+          "wezterm-fs-explorer/src/path_utils.rs",
+          "wezterm-fs-explorer/src/shell.rs",
+          "wezterm-fs-explorer/src/search.rs",
+          "Justfile",
+          ".cargo/config.toml",
+          "release.toml",
+          "cliff.toml"
+        ]
+      }
+    },
+    {
       "id": "ctx-wezterm-20260204",
       "project": "WezTerm Terminal Emulator",
       "repository": "github.com/david-t-martel/wezterm",
-      "timestamp": "2026-02-04",
+      "timestamp": "2026-02-04T00:00:00Z",
       "file": "wezterm-context-2026-02-04.md",
       "summary": "CLAUDE.md audit, CI workflow reorganization, build acceleration enhancements",
       "key_achievements": [
@@ -92,8 +159,8 @@
   ],
   "metadata": {
     "version": "2.0",
-    "last_updated": "2026-02-04",
-    "latest": "ctx-wezterm-20260204",
+    "last_updated": "2026-02-04T06:00:00Z",
+    "latest": "ctx-wezterm-build-20260204",
     "format": "context-index",
     "purpose": "Quick lookup and restoration of project contexts"
   }

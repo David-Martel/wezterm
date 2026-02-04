@@ -1,40 +1,73 @@
 # WezTerm Quick Context
 
 ## Current State
-- **Branch**: main @ c4a77fe91
+- **Branch**: main @ dbe154194
 - **Origin**: github.com/david-t-martel/wezterm (your fork)
 - **Upstream**: github.com/wezterm/wezterm (original)
+- **Tests**: 182 passing (108 fs-explorer + 74 watch)
 
-## Last Session (2026-02-04)
-- CLAUDE.md audited and corrected (sccache config values, utility workspace status)
-- 45 CI workflows disabled → `.github/workflows.disabled/`
-- build-all.ps1 enhanced with sccache/lld auto-detection
-- Git remotes reconfigured (origin=fork, upstream=wezterm)
+## Latest Session (2026-02-04 Build Enhancements)
+
+### Major Achievements
+- Migrated git2 -> gix (pure Rust, no native deps)
+- Added UDS Windows IPC (`src/ipc.rs`)
+- Added WSL path translation (`src/path_utils.rs`)
+- Added shell detection (`src/shell.rs`)
+- Added fuzzy search with nucleo (`src/search.rs`)
+- Enhanced Justfile to 32 targets
+- Added cargo-binstall and cargo-smart-release
+- Created Windows CI workflow
+
+### New Files
+```
+wezterm-fs-explorer/src/
+├── ipc.rs         # UDS Windows IPC
+├── path_utils.rs  # WSL path translation
+├── shell.rs       # Shell detection
+└── search.rs      # Fuzzy search (nucleo)
+
+Root:
+├── release.toml   # cargo-smart-release config
+├── cliff.toml     # git-cliff changelog
+└── .github/workflows/windows-ci.yml
+```
 
 ## Build Commands
 
-**Windows (Just)**:
+**Windows (Just)** - 32 targets available:
 ```powershell
-just build              # Standard build with sccache
-just release            # Release build
-just clippy             # Linting (no sccache)
-just test               # Tests with sccache
-just full-local-ci      # Full validation
+# Development
+just quick-check        # Fast check + fmt + clippy
+just build-utils        # Build custom utilities
+just test-nextest       # Run all tests
+
+# Tools
+just install-dev-tools  # Install nextest, llvm-cov, git-cliff
+
+# Coverage
+just coverage-open      # Generate and open coverage report
+
+# Release
+just release-dry-run    # Preview release
+just release-patch      # Bump patch version
+just changelog          # Generate changelog
 ```
 
-**Unix (Make)**:
+**Cargo Aliases** (new):
 ```bash
-make build              # Build main binaries
-make test               # Run nextest
-make fmt                # Format code
+cargo b    # build
+cargo c    # check
+cargo t    # test
+cargo nt   # nextest run
+cargo br   # build --release
 ```
 
 ## Custom Utilities
 
-| Utility | Workspace | Build |
-|---------|-----------|-------|
-| wezterm-watch | Yes | `cargo build -p wezterm-watch` |
-| wezterm-fs-explorer | No (standalone) | `cd wezterm-fs-explorer && cargo build` |
+| Utility | Tests | Status |
+|---------|-------|--------|
+| wezterm-fs-explorer | 108 | Passing |
+| wezterm-watch | 74 | Passing |
 
 ## sccache Configuration
 
@@ -52,11 +85,13 @@ git fetch upstream          # Get upstream changes
 git merge upstream/main     # Merge upstream
 ```
 
-## Untracked Files (consider .gitignore)
-- TODO.md
-- clippy-output.txt
-- file-operations.log
-- server.log
+## Recommended Next Agents
+1. `test-automator` - Integration tests for new modules
+2. `security-auditor` - Review IPC and path translation
+3. `performance-engineer` - Profile fuzzy search
 
 ## Working Directory
 `C:\Users\david\wezterm`
+
+---
+*Full context: wezterm-context-2026-02-04-build-enhancements.md*
