@@ -125,6 +125,10 @@ impl ModuleRegistry {
         let ctx = ModuleContext::new(capabilities);
 
         log::info!("Initializing module '{}'", module_id);
+        // NOTE: The write lock is held across the await point. This is safe because:
+        // 1. Module trait uses #[async_trait(?Send)], so futures run on single-threaded executor
+        // 2. The registry lock was already released before acquiring the module lock
+        // 3. This prevents concurrent init/start/stop on the same module
         module.write().init(&ctx).await?;
 
         Ok(())

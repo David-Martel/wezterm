@@ -34,12 +34,27 @@ pub struct FsExplorerModule {
     start_dir: PathBuf,
 }
 
+/// Returns a platform-appropriate default start directory.
+#[cfg(windows)]
+fn default_start_dir() -> PathBuf {
+    std::env::var("USERPROFILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("C:\\"))
+}
+
+#[cfg(not(windows))]
+fn default_start_dir() -> PathBuf {
+    PathBuf::from("/")
+}
+
 impl FsExplorerModule {
     /// Create a new FsExplorerModule
     pub fn new(start_dir: Option<PathBuf>) -> Self {
         Self {
             state: Mutex::new(ModuleState::Registered),
-            start_dir: start_dir.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))),
+            start_dir: start_dir.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| default_start_dir())
+            }),
         }
     }
 

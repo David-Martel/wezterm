@@ -2,35 +2,47 @@
 //!
 //! This module provides:
 //! - Background file watching with debouncing
-//! - Lua API for registering watch callbacks
+//! - Lua API for registering watches (events logged, callbacks planned for future)
 //! - Gitignore-aware filtering
+//!
+//! ## Thread Safety
+//!
+//! `WatcherModule` is `Send + Sync`. It uses a single aggregator thread for all
+//! watch events, avoiding per-watcher thread spawning.
+//!
+//! ## Example (Lua)
+//!
+//! ```lua
+//! local id = wezterm.watcher.watch("/path/to/dir", { recursive = true })
+//! -- Events are logged to wezterm's log
+//! wezterm.watcher.unwatch(id)
+//! ```
 
 use crate::{Capabilities, Module, ModuleContext, ModuleState};
 use anyhow::Result;
 use async_trait::async_trait;
 use config::lua::get_or_create_sub_module;
 use crossbeam::channel::{bounded, Receiver, Sender};
-use mlua::RegistryKey;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use wezterm_fs_utils::watcher::{WatchEvent, Watcher};
 
 /// A callback ID for managing watch subscriptions.
 pub type WatchCallbackId = u64;
 
-/// A watch subscription with optional Lua callback.
+/// A watch subscription.
 struct WatchSubscription {
     #[allow(dead_code)]
     path: PathBuf,
     watcher: Watcher,
     #[allow(dead_code)]
     recursive: bool,
-    /// Lua registry key for the callback function (if registered via Lua)
-    lua_callback: Option<RegistryKey>,
+    /// Handle to the forwarder thread for this subscription
+    forwarder_handle: Option<JoinHandle<()>>,
 }
 
 /// Shared state that can be accessed from Lua closures.
@@ -39,17 +51,17 @@ pub struct WatcherModuleHandle {
     subscriptions: Arc<Mutex<HashMap<WatchCallbackId, WatchSubscription>>>,
     next_id: Arc<AtomicU64>,
     event_tx: Arc<Mutex<Option<Sender<(WatchCallbackId, WatchEvent)>>>>,
-    lua_callbacks: Arc<Mutex<HashMap<WatchCallbackId, RegistryKey>>>,
 }
 
 impl WatcherModuleHandle {
-    /// Watch a path and register a Lua callback.
-    pub fn watch_with_callback(
+    /// Watch a path for changes.
+    ///
+    /// Returns a subscription ID that can be used to stop watching.
+    pub fn watch(
         &self,
         path: PathBuf,
         recursive: bool,
         use_gitignore: bool,
-        lua_callback: Option<RegistryKey>,
     ) -> Result<WatchCallbackId> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
 
@@ -58,26 +70,28 @@ impl WatcherModuleHandle {
 
         // Clone the receiver for forwarding events
         let watcher_rx = watcher.receiver().clone();
-        let event_tx_lock = self.event_tx.lock();
+        let event_tx_guard = self.event_tx.lock();
 
-        // Spawn a thread to forward events from this watcher
-        if let Some(ref tx) = *event_tx_lock {
+        // Spawn a forwarder thread for this watcher
+        let forwarder_handle = if let Some(ref tx) = *event_tx_guard {
             let tx = tx.clone();
-            thread::spawn(move || {
-                while let Ok(event) = watcher_rx.recv() {
-                    if tx.send((id, event)).is_err() {
-                        break;
+            let handle = thread::Builder::new()
+                .name(format!("watcher-fwd-{}", id))
+                .spawn(move || {
+                    while let Ok(event) = watcher_rx.recv() {
+                        if tx.send((id, event)).is_err() {
+                            // Aggregator channel closed, exit
+                            break;
+                        }
                     }
-                }
-            });
-        }
+                })
+                .ok();
+            handle
+        } else {
+            None
+        };
 
-        // Store the Lua callback if provided
-        if let Some(ref key) = lua_callback {
-            self.lua_callbacks
-                .lock()
-                .insert(id, unsafe { std::ptr::read(key) });
-        }
+        drop(event_tx_guard); // Release lock before acquiring subscriptions lock
 
         self.subscriptions.lock().insert(
             id,
@@ -85,11 +99,11 @@ impl WatcherModuleHandle {
                 path,
                 watcher,
                 recursive,
-                lua_callback,
+                forwarder_handle,
             },
         );
 
-        log::debug!("Added watch subscription {} for path", id);
+        log::debug!("Added watch subscription {}", id);
         Ok(id)
     }
 
@@ -97,9 +111,15 @@ impl WatcherModuleHandle {
     pub fn unwatch(&self, id: WatchCallbackId) -> Result<()> {
         let mut subs = self.subscriptions.lock();
         if let Some(mut sub) = subs.remove(&id) {
+            // Stop the watcher first (closes its channel, causing forwarder to exit)
             sub.watcher.unwatch()?;
-            // Remove Lua callback reference
-            self.lua_callbacks.lock().remove(&id);
+
+            // Wait for forwarder thread to finish (with timeout to avoid hanging)
+            if let Some(handle) = sub.forwarder_handle.take() {
+                // Give thread a chance to exit gracefully
+                let _ = handle.join();
+            }
+
             log::debug!("Removed watch subscription {}", id);
         }
         Ok(())
@@ -133,7 +153,6 @@ impl WatcherModule {
                 subscriptions: Arc::new(Mutex::new(HashMap::new())),
                 next_id: Arc::new(AtomicU64::new(1)),
                 event_tx: Arc::new(Mutex::new(Some(event_tx))),
-                lua_callbacks: Arc::new(Mutex::new(HashMap::new())),
             },
             event_rx: Some(event_rx),
             shutdown_tx: None,
@@ -152,8 +171,7 @@ impl WatcherModule {
         recursive: bool,
         use_gitignore: bool,
     ) -> Result<WatchCallbackId> {
-        self.handle
-            .watch_with_callback(path, recursive, use_gitignore, None)
+        self.handle.watch(path, recursive, use_gitignore)
     }
 
     /// Stop watching a path.
@@ -269,15 +287,16 @@ impl Module for WatcherModule {
             let _ = tx.send(());
         }
 
-        // Clear all subscriptions
+        // Clear all subscriptions and join forwarder threads
         let mut subs = self.handle.subscriptions.lock();
         for (id, mut sub) in subs.drain() {
             log::debug!("Cleaning up watch subscription {}", id);
             let _ = sub.watcher.unwatch();
+            // Wait for forwarder thread to exit
+            if let Some(handle) = sub.forwarder_handle.take() {
+                let _ = handle.join();
+            }
         }
-
-        // Clear lua callbacks
-        self.handle.lua_callbacks.lock().clear();
 
         // Clear the event sender
         *self.handle.event_tx.lock() = None;
@@ -310,8 +329,7 @@ impl Module for WatcherModule {
                         .unwrap_or(true);
 
                     let path_buf = PathBuf::from(&path);
-                    match watch_handle.watch_with_callback(path_buf, recursive, use_gitignore, None)
-                    {
+                    match watch_handle.watch(path_buf, recursive, use_gitignore) {
                         Ok(id) => {
                             log::info!(
                                 "Lua: Started watching '{}' (recursive={}, gitignore={}) -> id {}",
