@@ -63,6 +63,23 @@ dhat-heap.json
 /nix/result
 /docs/doxygen/
 
+# Temp/log files from development
+TODO.md
+*.log
+clippy-output.txt
+server.log
+file-operations.log
+
+# Editor/IDE files (additional)
+*.swp
+*.swo
+*~
+.vscode/settings.local.json
+
+# Build artifacts from custom utilities
+/wezterm-fs-explorer/target/
+/wezterm-watch/target/
+
 # Allow GitHub workflows and metadata to be versioned (override any parent ignores)
 !/.github/
 !/.github/workflows/

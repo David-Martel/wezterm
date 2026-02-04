@@ -168,6 +168,28 @@ rustflags = ["-C", "target-feature=+crt-static"]  # Static OpenSSL on Windows
 
 5. **Vendored Dependencies**: Critical C libraries (cairo, fontconfig, freetype, harfbuzz) are vendored in `deps/` for consistent builds
 
+### Microsoft Rust Guidelines (Mandatory)
+
+All code must follow the [Microsoft Pragmatic Rust Guidelines](https://microsoft.github.io/rust-guidelines/). See [AGENTS.md](./AGENTS.md) for detailed agent instructions.
+
+**Key Requirements:**
+
+| Guideline | Rule |
+|-----------|------|
+| **M-UNSAFE** | Only use `unsafe` for: novel abstractions, benchmarked perf optimization, FFI |
+| **M-CONCISE-NAMES** | Avoid weasel words (Service, Manager, Factory) |
+| **M-PANIC-IS-STOP** | Panics = "stop now"; use `Result` for recoverable errors |
+| **M-THROUGHPUT** | Design APIs for batched operations, exploit cache locality |
+| **M-HOTPATH** | Identify and benchmark hot paths early |
+| **M-PUBLIC-DEBUG** | All public types must implement `Debug` |
+| **M-LINT-OVERRIDE-EXPECT** | Use `#[expect]` instead of `#[allow]` |
+
+**Safety documentation for `unsafe`:**
+```rust
+// SAFETY: Explain preconditions and invariants maintained
+unsafe { ... }
+```
+
 ### Testing Approach
 
 - Unit tests are colocated with source files using `#[cfg(test)]` modules
