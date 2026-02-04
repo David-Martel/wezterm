@@ -25,6 +25,9 @@ vendored-openssl = ["ssh2/vendored-openssl", "libssh-rs/vendored-openssl"]
 vendored-openssl-ssh2 = ["ssh2/vendored-openssl"]
 vendored-openssl-libssh-rs = ["libssh-rs/vendored-openssl"]
 
+# Test features
+docker-tests = []  # Enable Docker-based integration tests
+
 [dependencies]
 anyhow.workspace = true
 base64 = {workspace = true, features=["std"]}

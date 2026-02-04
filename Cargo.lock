@@ -7812,6 +7812,7 @@ name = "termwiz"
 version = "0.24.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "bitflags 2.10.0",
  "cassowary",
  "criterion",
