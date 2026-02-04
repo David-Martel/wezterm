@@ -14,11 +14,14 @@
 //! - Native Windows Pageant support
 //! - SSH agent forwarding
 //! - SFTP via russh-sftp
-//! - Modern cryptography (ring or aws-lc-rs backends)
+//! - Modern cryptography (aws-lc-rs backend - FIPS validated)
 
 mod handler;
 mod session;
 mod channel;
+
+#[cfg(test)]
+mod tests;
 
 pub use handler::WezTermHandler;
 pub use session::RusshSession;
