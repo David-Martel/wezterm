@@ -1,55 +1,62 @@
 # WezTerm Quick Context
 
-## Current Task
-- ✅ Comprehensive architectural analysis completed
-- ✅ Custom utilities (wezterm-fs-explorer, wezterm-watch) documented
-- ✅ Architecture knowledge base created for AI assistant reference
-- ✅ AI Assistant Module design reviewed and implementation roadmap defined
-- ✅ Build system optimization and quality checks completed
+## Current State
+- **Branch**: main @ c4a77fe91
+- **Origin**: github.com/david-t-martel/wezterm (your fork)
+- **Upstream**: github.com/wezterm/wezterm (original)
 
-## Immediate Goals
-1. ✅ Repository forked and configured
-2. ✅ CLAUDE.md comprehensive development guide created
-3. ✅ Architecture knowledge base indexed (`.claude/context/wezterm-architecture-knowledge.md`)
-4. ✅ Build system verification and sccache statistics (23.12% hit rate, 4 GiB cache)
-5. ✅ Quality checks completed (fmt: ✅, clippy: ✅, all utilities: 0 warnings)
-6. ✅ All changes committed and pushed to fork
+## Last Session (2026-02-04)
+- CLAUDE.md audited and corrected (sccache config values, utility workspace status)
+- 45 CI workflows disabled → `.github/workflows.disabled/`
+- build-all.ps1 enhanced with sccache/lld auto-detection
+- Git remotes reconfigured (origin=fork, upstream=wezterm)
 
-## Recent Decisions
-- ✅ Created comprehensive architecture documentation
-- ✅ Documented dual GPU rendering backend (OpenGL/WebGPU)
-- ✅ Analyzed trait-based extensibility patterns
-- ✅ Reviewed AI module design (mistral.rs + MCP protocol)
-- ✅ Fixed all clippy warnings in custom utilities (wezterm-fs-explorer: 10→0, wezterm-watch: 9→0)
-- ✅ Fixed critical clippy issue in wezterm-dynamic/derive (wrong_self_convention)
-- ✅ Corrected invalid clippy.toml configuration
-- Use CLAUDE.md format for Claude Code documentation
-- Maintain cargo nextest for testing (not cargo test)
-- Follow existing Rust workspace patterns
-- Respect GPU acceleration architecture
-- Utilize parallel rust-pro agents for accelerated code quality improvements
+## Build Commands
 
-## Active Blockers
-- None - All quality checks passing
-- Repository ready for development work
-
-## Key Commands
-```bash
-# Build
-make build
-
-# Test
-make test
-
-# Format
-make fmt
-
-# Quick check
-cargo check
+**Windows (Just)**:
+```powershell
+just build              # Standard build with sccache
+just release            # Release build
+just clippy             # Linting (no sccache)
+just test               # Tests with sccache
+just full-local-ci      # Full validation
 ```
+
+**Unix (Make)**:
+```bash
+make build              # Build main binaries
+make test               # Run nextest
+make fmt                # Format code
+```
+
+## Custom Utilities
+
+| Utility | Workspace | Build |
+|---------|-----------|-------|
+| wezterm-watch | Yes | `cargo build -p wezterm-watch` |
+| wezterm-fs-explorer | No (standalone) | `cd wezterm-fs-explorer && cargo build` |
+
+## sccache Configuration
+
+```toml
+SCCACHE_DIR = "T:/RustCache/sccache"
+SCCACHE_CACHE_SIZE = "30G"
+SCCACHE_CACHE_COMPRESSION = "zstd"
+```
+
+## Git Workflow
+
+```bash
+git push                    # Push to your fork
+git fetch upstream          # Get upstream changes
+git merge upstream/main     # Merge upstream
+```
+
+## Untracked Files (consider .gitignore)
+- TODO.md
+- clippy-output.txt
+- file-operations.log
+- server.log
 
 ## Working Directory
 `C:\Users\david\wezterm`
-
-## Repository
-github.com/david-t-martel/wezterm (forked from wez/wezterm)

@@ -1,6 +1,52 @@
 {
   "contexts": [
     {
+      "id": "ctx-wezterm-20260204",
+      "project": "WezTerm Terminal Emulator",
+      "repository": "github.com/david-t-martel/wezterm",
+      "timestamp": "2026-02-04",
+      "file": "wezterm-context-2026-02-04.md",
+      "summary": "CLAUDE.md audit, CI workflow reorganization, build acceleration enhancements",
+      "key_achievements": [
+        "CLAUDE.md audited and corrected (sccache config accuracy)",
+        "45 CI workflows disabled for local-first development",
+        "build-all.ps1 enhanced with sccache/lld auto-detection",
+        "Git remotes reconfigured: origin=fork, upstream=wezterm"
+      ],
+      "active_work": [
+        "Local-first CI strategy implemented",
+        "Documentation accuracy improvements"
+      ],
+      "next_steps": [
+        "AI Module Design implementation",
+        "Test coverage improvements",
+        "Performance profiling"
+      ],
+      "technologies": [
+        "Rust",
+        "sccache",
+        "Just",
+        "Pre-commit hooks"
+      ],
+      "agents_used": [
+        "claude-md-improver",
+        "commit-cluster"
+      ],
+      "quick_restore": {
+        "working_directory": "C:\\Users\\david\\wezterm",
+        "branch": "main",
+        "commit": "c4a77fe91",
+        "build_command": "just build",
+        "test_command": "just test",
+        "key_files": [
+          "CLAUDE.md",
+          "Justfile",
+          ".cargo/config.toml",
+          "build-all.ps1"
+        ]
+      }
+    },
+    {
       "id": "wezterm-2025-01-30",
       "project": "WezTerm Terminal Emulator",
       "repository": "github.com/david-t-martel/wezterm",
@@ -45,8 +91,9 @@
     }
   ],
   "metadata": {
-    "version": "1.0",
-    "last_updated": "2025-01-30",
+    "version": "2.0",
+    "last_updated": "2026-02-04",
+    "latest": "ctx-wezterm-20260204",
     "format": "context-index",
     "purpose": "Quick lookup and restoration of project contexts"
   }
