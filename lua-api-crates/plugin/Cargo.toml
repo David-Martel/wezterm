@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 config.workspace = true
-git2.workspace = true
+gix.workspace = true
 log.workspace = true
 luahelper.workspace = true
 tempfile.workspace = true

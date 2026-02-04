@@ -1,8 +1,11 @@
+//! WezTerm Plugin System
+//!
+//! Provides Lua API for managing Git-based plugins using pure Rust gix library.
+//! This replaces the previous git2/libgit2-sys implementation with gitoxide.
+
 use anyhow::{anyhow, Context};
 use config::lua::get_or_create_sub_module;
 use config::lua::mlua::{self, Lua, Value};
-use git2::build::CheckoutBuilder;
-use git2::{Remote, Repository};
 use luahelper::to_lua;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -41,14 +44,26 @@ fn compute_repo_dir(url: &str) -> String {
     dir
 }
 
-fn get_remote(repo: &Repository) -> anyhow::Result<Option<Remote<'_>>> {
-    let remotes = repo.remotes()?;
-    for remote in remotes.iter() {
-        if let Some(name) = remote {
-            let remote = repo.find_remote(name)?;
-            return Ok(Some(remote));
+/// Get the remote URL from a repository.
+fn get_remote_url(repo: &gix::Repository) -> anyhow::Result<Option<String>> {
+    // Try to find the default remote (usually "origin")
+    if let Some(remote) = repo.find_default_remote(gix::remote::Direction::Fetch) {
+        let remote = remote?;
+        if let Some(url) = remote.url(gix::remote::Direction::Fetch) {
+            return Ok(Some(url.to_bstring().to_string()));
         }
     }
+
+    // Fall back to checking named remotes
+    let remote_names = repo.remote_names();
+    for name in remote_names.iter() {
+        if let Ok(remote) = repo.find_remote(name.as_ref()) {
+            if let Some(url) = remote.url(gix::remote::Direction::Fetch) {
+                return Ok(Some(url.to_bstring().to_string()));
+            }
+        }
+    }
+
     Ok(None)
 }
 
@@ -78,18 +93,15 @@ impl RepoSpec {
 
         let plugin_dir = RepoSpec::plugins_dir().join(&component);
 
-        let repo = Repository::open(&path)?;
-        let remote = get_remote(&repo)?.ok_or_else(|| anyhow!("no remotes!?"))?;
-        let url = remote.url();
-        if let Some(url) = url {
-            let url = url.to_string();
-            return Ok(Self {
-                component,
-                url,
-                plugin_dir,
-            });
-        }
-        anyhow::bail!("Unable to create a complete RepoSpec for repo at {path:?}");
+        let repo = gix::open(&path).context("open repository")?;
+        let url = get_remote_url(&repo)?
+            .ok_or_else(|| anyhow!("no remotes found in repository"))?;
+
+        Ok(Self {
+            component,
+            url,
+            plugin_dir,
+        })
     }
 
     fn plugins_dir() -> PathBuf {
@@ -104,64 +116,77 @@ impl RepoSpec {
         self.checkout_path().exists()
     }
 
+    /// Update the plugin by performing a fresh clone.
+    ///
+    /// This is a simpler approach than complex fetch+merge operations.
+    /// We backup the current checkout, clone fresh, and restore on failure.
     fn update(&self) -> anyhow::Result<()> {
         let path = self.checkout_path();
-        let repo = Repository::open(&path)?;
-        let mut remote = get_remote(&repo)?.ok_or_else(|| anyhow!("no remotes!?"))?;
-        remote.connect(git2::Direction::Fetch).context("connect")?;
-        let branch = remote
-            .default_branch()
-            .context("get default branch")?
-            .as_str()
-            .ok_or_else(|| anyhow!("default branch is not utf8"))?
-            .to_string();
 
-        remote.fetch(&[branch], None, None).context("fetch")?;
-        let mut merge_info = None;
-        repo.fetchhead_foreach(|refname, _remote_url, target_oid, was_merge| {
-            if was_merge {
-                merge_info.replace((refname.to_string(), *target_oid));
-                return true;
+        // Verify we have a valid repo
+        let _repo = gix::open(&path).context("open repository")?;
+
+        log::debug!("Updating {} via fresh clone", self.component);
+
+        // Create backup
+        let plugins_dir = Self::plugins_dir();
+        let backup_path = plugins_dir.join(format!("{}.backup", self.component));
+
+        // Remove old backup if exists
+        if backup_path.exists() {
+            std::fs::remove_dir_all(&backup_path).ok();
+        }
+
+        // Move current to backup
+        std::fs::rename(&path, &backup_path).context("backup existing plugin")?;
+
+        // Try to clone fresh
+        match self.check_out() {
+            Ok(_) => {
+                // Success - remove backup
+                std::fs::remove_dir_all(&backup_path).ok();
+                log::info!("Updated {}", self.component);
+                Ok(())
             }
-            false
-        })
-        .context("fetchhead_foreach")?;
-
-        let (refname, target_oid) = merge_info.ok_or_else(|| anyhow!("No merge info!?"))?;
-        let commit = repo
-            .find_annotated_commit(target_oid)
-            .context("find_annotated_commit")?;
-
-        let (analysis, _preference) = repo.merge_analysis(&[&commit]).context("merge_analysis")?;
-        if analysis.is_up_to_date() {
-            log::debug!("{} is up to date!", self.component);
-            return Ok(());
+            Err(e) => {
+                // Failed - restore backup
+                log::error!("Failed to update {}: {e:#}", self.component);
+                if let Err(restore_err) = std::fs::rename(&backup_path, &path) {
+                    log::error!("Failed to restore backup: {restore_err:#}");
+                }
+                Err(e)
+            }
         }
-        if analysis.is_fast_forward() {
-            log::debug!("{} can fast forward!", self.component);
-            let mut reference = repo.find_reference(&refname).context("find_reference")?;
-            reference
-                .set_target(target_oid, "fast forward")
-                .context("set_target")?;
-            repo.checkout_head(Some(CheckoutBuilder::new().force()))
-                .context("checkout_head")?;
-            return Ok(());
-        }
-
-        log::debug!("{} will merge", self.component);
-        repo.merge(&[&commit], None, Some(CheckoutBuilder::new().safe()))
-            .context("merge")?;
-        Ok(())
     }
 
     fn check_out(&self) -> anyhow::Result<()> {
         let plugins_dir = Self::plugins_dir();
         std::fs::create_dir_all(&plugins_dir)?;
         let target_dir = TempDir::new_in(&plugins_dir)?;
+
         log::debug!("Cloning {} into temporary dir {target_dir:?}", self.url);
-        Repository::clone_recurse(&self.url, target_dir.path())?;
+
+        // Parse the URL
+        let url = gix::url::parse(self.url.as_str().into()).context("parse URL")?;
+
+        // Prepare clone
+        let mut prepare_clone =
+            gix::prepare_clone(url, target_dir.path()).context("prepare clone")?;
+
+        // Fetch and checkout
+        let (mut prepare_checkout, _outcome) = prepare_clone
+            .fetch_then_checkout(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+            .context("fetch then checkout")?;
+
+        // Perform main worktree checkout
+        let (_repo, _outcome) = prepare_checkout
+            .main_worktree(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
+            .context("checkout main worktree")?;
+
+        // Keep the temp dir and rename to final location
         let target_dir = target_dir.keep();
         let checkout_path = self.checkout_path();
+
         match std::fs::rename(&target_dir, &checkout_path) {
             Ok(_) => {
                 log::info!("Cloned {} into {checkout_path:?}", self.url);
@@ -214,7 +239,12 @@ fn list_plugins() -> anyhow::Result<Vec<RepoSpec>> {
     for entry in plugins_dir.read_dir()? {
         let entry = entry?;
         if entry.path().is_dir() {
-            plugins.push(RepoSpec::load_from_dir(entry.path())?);
+            match RepoSpec::load_from_dir(entry.path()) {
+                Ok(spec) => plugins.push(spec),
+                Err(e) => {
+                    log::warn!("Failed to load plugin from {:?}: {e}", entry.path());
+                }
+            }
         }
     }
 
