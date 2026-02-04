@@ -11,7 +11,15 @@ documentation = "https://docs.rs/wezterm-ssh"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["libssh-rs", "ssh2"]
+# Default: russh (pure Rust, no OpenSSL required)
+# Set to ["libssh-rs", "ssh2"] to use legacy backends with OpenSSL
+default = ["russh"]
+
+# Pure Rust SSH backend (recommended - no C dependencies)
+russh = ["dep:russh", "dep:russh-sftp", "dep:async-trait", "dep:tokio"]
+
+# Legacy backends (require OpenSSL)
+legacy = ["libssh-rs", "ssh2", "dep:async_ossl"]
 vendored-openssl = ["ssh2/vendored-openssl", "libssh-rs/vendored-openssl"]
 vendored-openssl-ssh2 = ["ssh2/vendored-openssl"]
 vendored-openssl-libssh-rs = ["libssh-rs/vendored-openssl"]
@@ -27,20 +35,30 @@ filenamegen.workspace = true
 gethostname.workspace = true
 hex = { workspace = true, features = ["std"] }
 libc.workspace = true
-libssh-rs = {workspace=true, features=["vendored"], optional = true}
-#libssh-rs = {path="../../libssh-rs/libssh-rs", features=["vendored"], optional = true}
 log.workspace = true
 portable-pty.workspace = true
 regex.workspace = true
 smol.workspace = true
 socket2.workspace = true
 sha2.workspace = true
-ssh2 = {workspace=true, features=["openssl-on-win32"], optional = true}
 thiserror.workspace = true
 wezterm-uds.workspace = true
 
+# Pure Rust SSH backend (default)
+# Note: russh requires a crypto backend - we use 'ring' for portability
+russh = { version = "0.57", default-features = false, features = ["ring"], optional = true }
+russh-sftp = { version = "2.1", optional = true }
+async-trait = { workspace = true, optional = true }
+tokio = { version = "1", features = ["rt", "net", "sync", "io-util"], optional = true }
+
+# Legacy SSH backends (require OpenSSL)
+libssh-rs = {workspace=true, features=["vendored"], optional = true}
+#libssh-rs = {path="../../libssh-rs/libssh-rs", features=["vendored"], optional = true}
+ssh2 = {workspace=true, features=["openssl-on-win32"], optional = true}
+
 # Not used directly, but is used to centralize the openssl vendor feature selection
-async_ossl.workspace = true
+# Only needed with legacy backends
+async_ossl = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 passfd.workspace = true

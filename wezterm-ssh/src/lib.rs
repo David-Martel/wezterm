@@ -1,5 +1,5 @@
-#[cfg(not(any(feature = "libssh-rs", feature = "ssh2")))]
-compile_error!("Either libssh-rs or ssh2 must be enabled!");
+#[cfg(not(any(feature = "libssh-rs", feature = "ssh2", feature = "russh")))]
+compile_error!("At least one SSH backend must be enabled: libssh-rs, ssh2, or russh");
 
 mod auth;
 mod channelwrap;
@@ -13,6 +13,9 @@ mod sessioninner;
 mod sessionwrap;
 mod sftp;
 mod sftpwrap;
+
+#[cfg(feature = "russh")]
+mod russh_backend;
 
 pub use auth::*;
 pub use config::*;
