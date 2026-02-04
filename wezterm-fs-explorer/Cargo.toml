@@ -75,3 +75,7 @@ strip = true
 
 [dev-dependencies]
 tempfile = "3.8"
+assert_cmd = "2.0"
+predicates = "3.0"
+walkdir = "2.4"
+futures = "0.3"
