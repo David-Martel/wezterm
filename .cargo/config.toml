@@ -49,6 +49,13 @@ SCCACHE_SERVER_PORT = "4226"
 SCCACHE_CACHE_COMPRESSION = "zstd"
 SCCACHE_CACHE_SIZE = "30G"
 
+# ----------------------------------------------------------------------------
+# OpenSSL Configuration (vcpkg)
+# ----------------------------------------------------------------------------
+# Use pre-built OpenSSL from vcpkg to avoid build issues
+OPENSSL_DIR = "C:/codedev/vcpkg/installed/x64-windows"
+OPENSSL_NO_VENDOR = "1"
+
 # Primary cache location on T: drive (high-speed storage)
 # Fallback: If T: drive unavailable, set SCCACHE_DIR environment variable to:
 #   Windows: $env:USERPROFILE\.cache\sccache (PowerShell)

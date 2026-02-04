@@ -10,12 +10,15 @@ members = [
   "wezterm-cell",
   "wezterm-escape-parser",
   "wezterm-dynamic",
+  "wezterm-fs-utils",
   "wezterm-gui",
+  "wezterm-module-framework",
   "wezterm-mux-server",
   "wezterm-open-url",
   "wezterm-ssh",
   "wezterm-surface",
-  "wezterm-uds", "wezterm-watch",
+  "wezterm-uds",
+  "wezterm-watch",
 ]
 resolver = "2"
 exclude = [
@@ -59,7 +62,7 @@ camino = "1.0"
 cassowary = "0.3"
 cc = {version="1.0", features = ["parallel"]}
 cgl = "0.3"
-chrono = {version="0.4", default-features=false, features=["unstable-locales", "serde"]}
+chrono = {version="0.4", default-features=false, features=["unstable-locales", "serde", "clock"]}
 clap = {version="4.0", features=["derive"]}
 clap_complete = "4.4"
 clap_complete_fig = "4.0"
@@ -251,6 +254,8 @@ wezterm-dynamic = { version = "0.2.1", path = "wezterm-dynamic", default-feature
 wezterm-dynamic-derive = { version="0.1.1", path="wezterm-dynamic/derive" }
 wezterm-escape-parser = { version="0.1.0", path="wezterm-escape-parser" }
 wezterm-font = { path = "wezterm-font" }
+wezterm-fs-utils = { path = "wezterm-fs-utils" }
+wezterm-module-framework = { path = "wezterm-module-framework" }
 wezterm-gui-subcommands = { path = "wezterm-gui-subcommands" }
 wezterm-input-types = { version="0.1", path = "wezterm-input-types", default-features=false }
 wezterm-mux-server-impl = { path = "wezterm-mux-server-impl" }

@@ -7749,6 +7749,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "wezterm-fs-utils"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossbeam",
+ "gix",
+ "ignore",
+ "log",
+ "notify 6.1.1",
+ "notify-debouncer-full",
+ "nucleo-matcher",
+ "parking_lot",
+ "serde",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "wezterm-gui"
 version = "0.1.0"
 dependencies = [
@@ -7850,6 +7868,33 @@ dependencies = [
  "euclid",
  "serde",
  "wezterm-dynamic",
+]
+
+[[package]]
+name = "wezterm-module-framework"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bitflags 1.3.2",
+ "config",
+ "crossbeam",
+ "downcast-rs",
+ "filedescriptor",
+ "log",
+ "luahelper",
+ "mlua",
+ "mux",
+ "parking_lot",
+ "rangeset",
+ "serde",
+ "tempfile",
+ "termwiz",
+ "thiserror 1.0.69",
+ "tokio",
+ "url",
+ "wezterm-fs-utils",
+ "wezterm-term",
 ]
 
 [[package]]
@@ -8037,9 +8082,6 @@ dependencies = [
 [[package]]
 name = "wezterm-version"
 version = "0.1.0"
-dependencies = [
- "git2",
-]
 
 [[package]]
 name = "wezterm-watch"
