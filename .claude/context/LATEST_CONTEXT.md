@@ -1,102 +1,98 @@
-# WezTerm Context: Phase 0 Complete - Ready for Russh
+# WezTerm Context: All Phases Complete
 
-**Context ID**: ctx-wezterm-phase0-complete-20260204
-**Created**: 2026-02-04T09:30:00Z
-**Branch**: main @ d829169b6
+**Context ID**: ctx-wezterm-all-phases-complete-20260204
+**Created**: 2026-02-04
+**Branch**: main @ 566db118d
 **Schema Version**: 2.0
 
 ---
 
 ## Quick Summary
 
-**Phase 0 Critical Bug Fixes: COMPLETE**
+**ALL PHASES COMPLETE** - Pure-Rust SSH backend fully implemented.
 
-All safety and portability issues in the Module Framework have been resolved. The codebase is now production-ready and prepared for Phase 1: Russh SSH backend implementation.
+The russh 0.57 backend provides SSH, PTY, and SFTP operations without any C library dependencies. Search algorithms optimized. Comprehensive documentation and test coverage added.
 
-### Completed This Session
+### Completed Tasks
 
-| Task | Issue | Status |
-|------|-------|--------|
-| #9 | Unsafe ptr::read UB | ✅ Fixed |
-| #10 | Registry deadlock concern | ✅ Clarified |
-| #11 | Thread leak in WatcherModule | ✅ Fixed |
-| #12 | Windows path bug | ✅ Fixed |
+| Task | Description | Status |
+|------|-------------|--------|
+| #9-12 | Phase 0: Critical bug fixes | ✅ Complete |
+| #13 | Russh core connection | ✅ Complete |
+| #14 | Russh PTY channel operations | ✅ Complete |
+| #15 | Russh SFTP integration | ✅ Complete |
+| #16 | Search heap optimization | ✅ Complete |
+| #17 | Documentation & examples | ✅ Complete |
+| #18 | Test coverage expansion | ✅ Complete |
 
 ### Test Results
 
-```
-wezterm-fs-utils:        21 passed
-wezterm-module-framework: 14 passed
-Total:                   35 tests passing
-```
+- **wezterm-fs-utils**: 33 passing tests + 1 doctest
+- **wezterm-ssh russh**: 28 unit tests + 18 integration tests
 
 ---
 
-## Next Steps (Phase 1: Russh)
+## Files Changed This Session
 
-### Priority Tasks
+### Documentation Added
+- `wezterm-ssh/src/russh_backend/mod.rs` - Architecture diagram
+- `wezterm-ssh/src/russh_backend/session.rs` - Connection flow docs
+- `wezterm-ssh/src/russh_backend/channel.rs` - Lifecycle docs
+- `wezterm-ssh/src/russh_backend/sftp.rs` - SFTP architecture docs
+- `wezterm-ssh/src/russh_backend/handler.rs` - Event flow docs
+- `wezterm-fs-utils/src/lib.rs` - Crate overview with examples
 
-| Task | Description | Priority |
-|------|-------------|----------|
-| #13 | Russh core connection handler | HIGH |
-| #14 | Russh PTY channel operations | HIGH |
-| #15 | Russh SFTP integration | MEDIUM |
-
-### Files to Create
-
-```
-wezterm-ssh/src/russh_backend/
-├── mod.rs          # Module exports
-├── handler.rs      # WezTermHandler (russh::client::Handler)
-├── session.rs      # RusshSession wrapper
-├── channel.rs      # RusshChannel (PTY operations)
-├── auth.rs         # Authentication methods
-└── sftp.rs         # SFTP integration
-```
-
-### Dependencies to Add
-
-```toml
-russh = { version = "0.47", optional = true }
-russh-keys = { version = "0.47", optional = true }
-russh-sftp = { version = "0.3", optional = true }
-```
+### Tests Added
+- `wezterm-fs-utils/src/walker.rs` - Unicode, symlinks, deep nesting edge cases
+- `wezterm-ssh/src/russh_backend/tests.rs` - Concurrency, error handling, signal edge cases
 
 ---
 
-## Quick Commands
+## Build Commands
 
 ```bash
-# Verify current state
-cargo test -p wezterm-fs-utils -p wezterm-module-framework
+# Build with russh only (no OpenSSL required)
+cargo build -p wezterm-ssh --no-default-features --features russh
 
-# Start russh work
-cargo check -p wezterm-ssh
+# Run all tests
+cargo test -p wezterm-ssh --features russh --no-default-features
+cargo test -p wezterm-fs-utils
 
-# Full workspace check
-cargo check --workspace
+# Verify no OpenSSL in deps
+cargo tree -p wezterm-ssh --features russh | findstr -i openssl
+# Should return nothing
 ```
 
 ---
 
-## Files Modified This Session
+## Architecture Summary
 
+### Russh Backend Structure
 ```
-wezterm-module-framework/src/modules/watcher/mod.rs   (+54 -37)
-wezterm-module-framework/src/modules/fs_explorer/mod.rs (+17 -4)
-wezterm-module-framework/src/registry.rs              (+4)
+wezterm-ssh/src/russh_backend/
+├── mod.rs          # Runtime (OnceLock<tokio::Runtime>), block_on()
+├── handler.rs      # WezTermHandler (host key, banners)
+├── session.rs      # RusshSession (connect, auth, channels)
+├── channel.rs      # RusshChannel (PTY, shell, exec, signals)
+├── sftp.rs         # RusshSftp, RusshFile, RusshDir
+└── tests.rs        # 28 unit tests
 ```
+
+### Key Patterns
+- Async/sync bridge via shared tokio runtime
+- Feature-gated compilation (`#[cfg(feature = "russh")]`)
+- Bounded heap for O(n log k) search results
+- Binary search for O(log n) index lookups
 
 ---
 
-## Key Decisions
+## Next Agent Recommendations
 
-1. **Removed lua_callbacks** - Not invoked, was causing UB
-2. **Added forwarder_handle tracking** - Proper thread cleanup
-3. **Platform-specific paths** - `#[cfg(windows)]` for default_start_dir
-4. **Lock pattern documented** - Safe due to `#[async_trait(?Send)]`
+1. **code-reviewer**: Final review of all changes
+2. **deployment-engineer**: Update CI for russh-only builds
+3. **performance-engineer**: Benchmark vs libssh-rs
 
 ---
 
-*Full context: wezterm-context-2026-02-04-phase0-complete.md*
+*Full context: wezterm-context-20260204.md*
 *Plan: ~/.claude/plans/woolly-shimmying-plum.md*
