@@ -288,6 +288,130 @@ This repository includes custom Rust utilities:
 
 Binaries install to: `$env:USERPROFILE\.local\bin\` (added to PATH automatically)
 
+### New Utility Modules (wezterm-fs-explorer)
+
+| Module | Description | Key Features |
+|--------|-------------|--------------|
+| `ipc.rs` | Cross-platform IPC | UDS Windows (uds_windows), tokio UnixStream on Unix |
+| `path_utils.rs` | WSL path translation | C:\ ↔ /mnt/c/ conversion, path type detection |
+| `shell.rs` | Shell detection | PowerShell, Git Bash, WSL, CMD auto-detection |
+| `search.rs` | Fuzzy search | nucleo-based file search (Ctrl+F / `/`) |
+
+## Integrated Build Tools Framework
+
+### PowerShell Build Integration (`tools/`)
+
+**Build-Integration.ps1** - Master build tools integration (1,280 lines):
+```powershell
+# Install all Rust build tools
+.\tools\Build-Integration.ps1 -Install
+
+# Test tool health
+.\tools\Build-Integration.ps1 -HealthCheck
+
+# Optimize build environment
+.\tools\Build-Integration.ps1 -Optimize
+
+# Smart release workflow
+.\tools\Build-Integration.ps1 -Release -DryRun
+```
+
+Key functions:
+- `Install-RustBuildTools` - cargo-binstall, nextest, llvm-cov, git-cliff, cargo-smart-release
+- `Test-BuildToolHealth` - Verify all tools installed and functional
+- `Optimize-BuildEnvironment` - Configure sccache, LTO, incremental builds
+- `Invoke-SmartRelease` - Automated release with changelog generation
+
+**Invoke-Gix.ps1** - gix CLI wrapper (pure Rust Git):
+```powershell
+# Repository statistics
+.\tools\Invoke-Gix.ps1 -Stats
+
+# Unreleased commits since last tag
+.\tools\Invoke-Gix.ps1 -UnreleasedCommits
+
+# Generate changelog
+.\tools\Invoke-Gix.ps1 -Changelog
+
+# Suggest version bump
+.\tools\Invoke-Gix.ps1 -VersionBump
+```
+
+**CargoTools Module** (`tools/CargoTools/`):
+- Cargo build wrapping with sccache integration
+- Preflight checks for build environment
+- Build routing and optimization
+- Import: `Import-Module .\tools\CargoTools\CargoTools.psd1`
+
+### Enhanced Justfile Targets (49 total)
+
+**Quick Development**:
+```bash
+just quick-check       # Fast check + fmt + clippy
+just dev-cycle         # Full development cycle
+just pre-commit        # Pre-commit validation
+```
+
+**Build Targets**:
+```bash
+just build-parallel    # Parallel workspace build
+just build-diag        # Build with diagnostics
+just rebuild-clean     # Clean rebuild
+just build-utils       # Build custom utilities
+```
+
+**Release & Changelog**:
+```bash
+just release-preview   # Preview release changes
+just release-execute   # Execute release
+just release-with-changelog  # Release + changelog
+just changelog         # Generate changelog only
+```
+
+**Repository Analysis (gix)**:
+```bash
+just repo-stats        # Repository statistics
+just unreleased-commits # Commits since last tag
+just repo-verify       # Verify repository integrity
+```
+
+**Tool Management**:
+```bash
+just bootstrap-tools   # Install all dev tools
+just check-tools       # Verify tool installation
+just install-dev-tools # Install nextest, llvm-cov, git-cliff
+```
+
+**CI/CD**:
+```bash
+just ci-validate       # Full CI validation
+just full-local-ci     # Comprehensive local CI
+```
+
+### Release Automation
+
+**cargo-smart-release** (`release.toml`):
+- Automated version bumping
+- Changelog generation via git-cliff
+- Pre-release checks and validation
+- Configured for wezterm-fs-explorer and wezterm-watch
+
+**git-cliff** (`cliff.toml`):
+- Conventional commits parsing
+- Grouped changelog by type (feat, fix, docs, etc.)
+- GitHub release notes format
+
+```powershell
+# Preview release
+just release-dry-run
+
+# Execute patch release
+just release-patch
+
+# Generate changelog
+just changelog
+```
+
 ## Planned Features & Design Documents
 
 **AI Assistant Module** (`WEZTERM_AI_MODULE_DESIGN.md`):
