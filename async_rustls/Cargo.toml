@@ -1,0 +1,32 @@
+[package]
+name = "async_rustls"
+version = "0.1.0"
+authors = ["Wez Furlong <wez@wezfurlong.org>"]
+edition = "2021"
+resolver = "2"
+publish = false
+description = "Pure-Rust async TLS using rustls with smol/async-io compatibility"
+
+[dependencies]
+# Core async runtime
+async-io.workspace = true
+smol.workspace = true
+
+# Pure-Rust TLS
+rustls.workspace = true
+rustls-pemfile.workspace = true
+rustls-pki-types.workspace = true
+
+# Certificate verification
+x509-parser.workspace = true
+webpki-roots.workspace = true
+
+# Error handling and utilities
+anyhow.workspace = true
+log.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+tempfile.workspace = true
+time = "0.3"
