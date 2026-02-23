@@ -1,0 +1,38 @@
+# wezterm-utils-daemon Configuration File
+#
+# This is the default configuration file for the daemon.
+# All fields are optional and will use defaults if not specified.
+
+# Named pipe path for Windows IPC
+# Default: \\.\pipe\wezterm-utils-ipc
+pipe_name = "\\\\.\\pipe\\wezterm-utils-ipc"
+
+# Maximum number of concurrent connections
+# Must be between 1 and 1000
+# Default: 10
+max_connections = 10
+
+# Log level: trace, debug, info, warn, error
+# Default: info
+log_level = "info"
+
+# Enable JSON-formatted logging output
+# Useful for log aggregation systems
+# Default: false
+json_logging = false
+
+# Keep-alive interval in seconds
+# How often to check for stale connections
+# Default: 30
+keep_alive_seconds = 30
+
+# Connection timeout in seconds
+# Connections with no activity will be closed after this duration
+# Must be >= keep_alive_seconds
+# Default: 120
+timeout_seconds = 120
+
+# Enable Windows process ID validation
+# When enabled, validates connecting process PIDs for security
+# Default: true
+validate_process_ids = true

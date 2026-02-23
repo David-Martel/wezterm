@@ -1,0 +1,364 @@
+//! Connection management for wezterm-utils-daemon
+//!
+//! Manages active connections to utilities, connection pooling, and keep-alive.
+
+use crate::error::{DaemonError, Result};
+use crate::protocol::{EventSubscription, JsonRpcMessage};
+use dashmap::DashMap;
+use parking_lot::RwLock;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::windows::named_pipe::NamedPipeServer;
+use tokio::sync::mpsc;
+use tokio::time;
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
+
+/// Maximum message size (1MB)
+const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
+
+/// Connection keep-alive interval
+const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Connection timeout after no activity
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Represents a single utility connection
+#[derive(Debug)]
+pub struct Connection {
+    pub id: String,
+    pub name: Option<String>,
+    pub capabilities: Vec<String>,
+    pub subscriptions: Vec<EventSubscription>,
+    pub connected_at: Instant,
+    pub last_activity: Arc<RwLock<Instant>>,
+    pub tx: mpsc::UnboundedSender<JsonRpcMessage>,
+}
+
+impl Connection {
+    pub fn new(tx: mpsc::UnboundedSender<JsonRpcMessage>) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: None,
+            capabilities: Vec::new(),
+            subscriptions: Vec::new(),
+            connected_at: Instant::now(),
+            last_activity: Arc::new(RwLock::new(Instant::now())),
+            tx,
+        }
+    }
+
+    pub fn register(&mut self, name: String, capabilities: Vec<String>) {
+        self.name = Some(name);
+        self.capabilities = capabilities;
+        self.update_activity();
+    }
+
+    pub fn subscribe(&mut self, subscriptions: Vec<EventSubscription>) {
+        self.subscriptions.extend(subscriptions);
+        self.update_activity();
+    }
+
+    pub fn unsubscribe(&mut self, event_types: &[String]) {
+        self.subscriptions
+            .retain(|sub| !event_types.contains(&sub.event_type));
+        self.update_activity();
+    }
+
+    pub fn update_activity(&self) {
+        *self.last_activity.write() = Instant::now();
+    }
+
+    pub fn is_timed_out(&self) -> bool {
+        self.last_activity.read().elapsed() > CONNECTION_TIMEOUT
+    }
+
+    pub fn is_subscribed_to(&self, event_type: &str) -> bool {
+        self.subscriptions
+            .iter()
+            .any(|sub| sub.event_type == event_type)
+    }
+
+    pub async fn send(&self, message: JsonRpcMessage) -> Result<()> {
+        self.tx
+            .send(message)
+            .map_err(|_| DaemonError::Connection("Failed to send message".to_string()))?;
+        self.update_activity();
+        Ok(())
+    }
+}
+
+/// Manages all active connections
+pub struct ConnectionManager {
+    connections: Arc<DashMap<String, Arc<Connection>>>,
+    max_connections: usize,
+    total_messages: Arc<RwLock<u64>>,
+}
+
+impl ConnectionManager {
+    pub fn new(max_connections: usize) -> Self {
+        Self {
+            connections: Arc::new(DashMap::new()),
+            max_connections,
+            total_messages: Arc::new(RwLock::new(0)),
+        }
+    }
+
+    pub fn add_connection(&self, connection: Connection) -> Result<Arc<Connection>> {
+        if self.connections.len() >= self.max_connections {
+            return Err(DaemonError::ConnectionLimitReached(self.max_connections));
+        }
+
+        let id = connection.id.clone();
+        let conn = Arc::new(connection);
+        self.connections.insert(id.clone(), conn.clone());
+
+        info!(
+            connection_id = %id,
+            total_connections = self.connections.len(),
+            "Connection added"
+        );
+
+        Ok(conn)
+    }
+
+    pub fn remove_connection(&self, id: &str) {
+        if let Some((_, conn)) = self.connections.remove(id) {
+            info!(
+                connection_id = %id,
+                name = ?conn.name,
+                total_connections = self.connections.len(),
+                "Connection removed"
+            );
+        }
+    }
+
+    pub fn get_connection(&self, id: &str) -> Option<Arc<Connection>> {
+        self.connections.get(id).map(|entry| entry.value().clone())
+    }
+
+    pub fn get_connection_by_name(&self, name: &str) -> Option<Arc<Connection>> {
+        self.connections
+            .iter()
+            .find(|entry| {
+                entry
+                    .value()
+                    .name
+                    .as_ref()
+                    .map(|n| n == name)
+                    .unwrap_or(false)
+            })
+            .map(|entry| entry.value().clone())
+    }
+
+    pub fn get_all_connections(&self) -> Vec<Arc<Connection>> {
+        self.connections
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
+    }
+
+    pub fn get_active_count(&self) -> usize {
+        self.connections.len()
+    }
+
+    pub fn increment_messages(&self) {
+        *self.total_messages.write() += 1;
+    }
+
+    pub fn get_total_messages(&self) -> u64 {
+        *self.total_messages.read()
+    }
+
+    pub fn broadcast_to_subscribers(
+        &self,
+        event_type: &str,
+        message: JsonRpcMessage,
+    ) -> Vec<String> {
+        let mut sent_to = Vec::new();
+
+        for entry in self.connections.iter() {
+            let conn = entry.value();
+            if conn.is_subscribed_to(event_type) {
+                if let Err(e) = conn.tx.send(message.clone()) {
+                    warn!(
+                        connection_id = %conn.id,
+                        error = %e,
+                        "Failed to send broadcast"
+                    );
+                } else {
+                    conn.update_activity();
+                    sent_to.push(conn.id.clone());
+                }
+            }
+        }
+
+        debug!(
+            event_type = %event_type,
+            subscribers = sent_to.len(),
+            "Broadcast sent"
+        );
+
+        sent_to
+    }
+
+    pub fn cleanup_stale_connections(&self) -> usize {
+        let mut removed = 0;
+        let stale: Vec<String> = self
+            .connections
+            .iter()
+            .filter(|entry| entry.value().is_timed_out())
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        for id in stale {
+            self.remove_connection(&id);
+            removed += 1;
+        }
+
+        if removed > 0 {
+            info!(removed = removed, "Cleaned up stale connections");
+        }
+
+        removed
+    }
+
+    /// Start periodic cleanup task
+    pub fn start_cleanup_task(self: Arc<Self>) {
+        tokio::spawn(async move {
+            let mut interval = time::interval(Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                self.cleanup_stale_connections();
+            }
+        });
+    }
+}
+
+/// Handle a single connection (reads messages from pipe)
+pub async fn handle_connection(
+    mut pipe: NamedPipeServer,
+    connection: Arc<Connection>,
+    router_tx: mpsc::UnboundedSender<(String, JsonRpcMessage)>,
+) -> Result<()> {
+    let (tx, mut rx) = mpsc::unbounded_channel::<JsonRpcMessage>();
+
+    // Spawn writer task
+    let connection_id = connection.id.clone();
+    tokio::spawn(async move {
+        while let Some(message) = rx.recv().await {
+            if let Ok(json) = message.to_string() {
+                let data = format!("{}\n", json);
+                if let Err(e) = pipe.write_all(data.as_bytes()).await {
+                    error!(
+                        connection_id = %connection_id,
+                        error = %e,
+                        "Failed to write to pipe"
+                    );
+                    break;
+                }
+                if let Err(e) = pipe.flush().await {
+                    error!(
+                        connection_id = %connection_id,
+                        error = %e,
+                        "Failed to flush pipe"
+                    );
+                    break;
+                }
+            }
+        }
+    });
+
+    // Read messages from pipe
+    let reader = BufReader::new(pipe);
+    let mut lines = reader.lines();
+
+    while let Ok(Some(line)) = lines.next_line().await {
+        if line.len() > MAX_MESSAGE_SIZE {
+            warn!(
+                connection_id = %connection.id,
+                size = line.len(),
+                "Message exceeds maximum size"
+            );
+            continue;
+        }
+
+        match JsonRpcMessage::parse(&line) {
+            Ok(message) => {
+                connection.update_activity();
+                if let Err(e) = router_tx.send((connection.id.clone(), message)) {
+                    error!(
+                        connection_id = %connection.id,
+                        error = %e,
+                        "Failed to send to router"
+                    );
+                    break;
+                }
+            }
+            Err(e) => {
+                warn!(
+                    connection_id = %connection.id,
+                    error = %e,
+                    "Failed to parse message"
+                );
+            }
+        }
+    }
+
+    info!(
+        connection_id = %connection.id,
+        "Connection handler exiting"
+    );
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_connection_manager() {
+        let manager = ConnectionManager::new(10);
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        let conn = Connection::new(tx);
+        let id = conn.id.clone();
+
+        let added = manager.add_connection(conn).unwrap();
+        assert_eq!(manager.get_active_count(), 1);
+
+        assert!(manager.get_connection(&id).is_some());
+
+        manager.remove_connection(&id);
+        assert_eq!(manager.get_active_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_connection_limit() {
+        let manager = ConnectionManager::new(2);
+
+        let (tx1, _) = mpsc::unbounded_channel();
+        let (tx2, _) = mpsc::unbounded_channel();
+        let (tx3, _) = mpsc::unbounded_channel();
+
+        assert!(manager.add_connection(Connection::new(tx1)).is_ok());
+        assert!(manager.add_connection(Connection::new(tx2)).is_ok());
+        assert!(manager.add_connection(Connection::new(tx3)).is_err());
+    }
+
+    #[test]
+    fn test_connection_subscription() {
+        let (tx, _) = mpsc::unbounded_channel();
+        let mut conn = Connection::new(tx);
+
+        conn.subscribe(vec![EventSubscription {
+            event_type: "test.event".to_string(),
+            filter: None,
+        }]);
+
+        assert!(conn.is_subscribed_to("test.event"));
+        assert!(!conn.is_subscribed_to("other.event"));
+    }
+}
