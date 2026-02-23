@@ -45,7 +45,7 @@ lto = "thin"                       # Thin LTO for better optimization with reaso
 # Sccache Configuration
 # ----------------------------------------------------------------------------
 [env]
-SCCACHE_SERVER_PORT = "4226"
+SCCACHE_SERVER_PORT = "4400"
 SCCACHE_CACHE_COMPRESSION = "zstd"
 SCCACHE_CACHE_SIZE = "30G"
 
