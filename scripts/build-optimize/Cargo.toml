@@ -1,0 +1,113 @@
+# WezTerm Build Optimization Profile
+# For building WezTerm with maximum performance
+
+[package]
+name = "wezterm-optimized"
+version = "0.1.0"
+edition = "2021"
+
+# Profile for maximum runtime performance
+[profile.release-optimized]
+inherits = "release"
+
+# Link-Time Optimization - Whole program optimization
+lto = "fat"
+
+# Code generation units - 1 for maximum optimization
+codegen-units = 1
+
+# Optimization level - 3 is maximum
+opt-level = 3
+
+# Debug symbols - strip for smaller binary
+debug = false
+strip = true
+
+# Enable all CPU features for native performance
+# This makes binary CPU-specific but faster
+[profile.release-optimized.build-override]
+opt-level = 3
+codegen-units = 1
+
+# Profile Guided Optimization settings
+[profile.release-pgo-generate]
+inherits = "release"
+lto = "thin"  # Use thin LTO during profiling
+debug = 1  # Keep minimal debug info
+
+[profile.release-pgo-use]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
+
+# Memory optimized profile (smaller binary, still fast)
+[profile.release-memory]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = "z"  # Optimize for size
+strip = true
+panic = "abort"  # Smaller panic handler
+
+# Development profile with some optimizations
+[profile.dev-optimized]
+inherits = "dev"
+opt-level = 2  # Some optimization
+debug = true  # Keep debug symbols
+
+[dependencies]
+# These would be WezTerm's actual dependencies
+# Listed here as example optimizations
+
+# Use jemalloc for better memory performance
+jemallocator = { version = "0.5", optional = true }
+
+# Or use mimalloc for Windows
+mimalloc = { version = "0.1", optional = true }
+
+# Faster hasher
+ahash = "0.8"
+
+# SIMD text processing
+simdutf8 = "0.1"
+
+[features]
+default = ["optimize-native"]
+
+# CPU-specific optimizations
+optimize-native = []
+optimize-x86-64-v3 = []  # Modern x86-64 with AVX2
+optimize-x86-64-v4 = []  # Latest x86-64 with AVX-512
+
+# Memory allocator choices
+allocator-jemalloc = ["jemallocator"]
+allocator-mimalloc = ["mimalloc"]
+allocator-system = []  # Use system allocator
+
+# Feature flags for conditional compilation
+minimal = []  # Minimal feature set for smallest binary
+performance = []  # All performance features enabled
+
+[build-dependencies]
+# Build script optimization
+cc = { version = "1.0", features = ["parallel"] }
+
+# Custom build script for optimization
+[package.metadata.build]
+# Enable parallel compilation
+parallel = true
+
+# Use sccache for caching
+rustc-wrapper = "sccache"
+
+# Custom RUSTFLAGS for maximum optimization
+[package.metadata.rustflags]
+release-optimized = [
+    "-C", "target-cpu=native",
+    "-C", "link-arg=-fuse-ld=lld",  # Use faster linker
+    "-C", "link-arg=-Wl,--gc-sections",  # Remove unused sections
+    "-Z", "share-generics=y",  # Share generic instantiations
+    "-Z", "parallel-compiler",  # Parallel compilation
+]
