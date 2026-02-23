@@ -66,7 +66,7 @@ PowerShellVersion = '5.1'
 # FormatsToProcess = @()
 
 # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
-# NestedModules = @()
+# NestedModules = @('Private\\JsonParsing.ps1')
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
 FunctionsToExport = 'Invoke-CargoRoute', 'Invoke-CargoWrapper', 'Invoke-CargoWsl',
@@ -113,6 +113,7 @@ FileList = @(
     'Private\\BuildOutput.ps1',
     'Private\\Progress.ps1',
     'Private\\LlmOutput.ps1',
+    'Private\\JsonParsing.ps1',
     'Tests\\Invoke-RustAnalyzerWrapper.Tests.ps1',
     'README.md',
     'CHANGELOG.md',

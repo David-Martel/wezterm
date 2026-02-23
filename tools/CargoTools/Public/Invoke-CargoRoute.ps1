@@ -138,7 +138,7 @@ Invoke-CargoRoute --help
     }
 
     if ($NoRoute) {
-        return (Invoke-CargoWrapper -ArgumentList $passThrough.ToArray())
+        return (Invoke-CargoWrapper @passThrough)
     }
 
     $target = Get-TargetFromArgs $passThrough.ToArray()
@@ -169,7 +169,7 @@ Invoke-CargoRoute --help
     }
 
     switch ($route) {
-        'windows' { return (Invoke-CargoWrapper -ArgumentList $passThrough.ToArray()) }
+        'windows' { return (Invoke-CargoWrapper @passThrough) }
         'wsl' {
             $wslArgs = New-Object System.Collections.Generic.List[string]
             if ($WslNative) { $wslArgs.Add('--native') }
@@ -177,7 +177,7 @@ Invoke-CargoRoute --help
             if ($WslSccache) { $wslArgs.Add('--sccache') }
             if ($WslNoSccache) { $wslArgs.Add('--no-sccache') }
             $wslArgs.AddRange($passThrough)
-            return (Invoke-CargoWsl -ArgumentList $wslArgs.ToArray())
+            return (Invoke-CargoWsl @wslArgs)
         }
         'docker' {
             $dockerArgs = New-Object System.Collections.Generic.List[string]
@@ -196,11 +196,11 @@ Invoke-CargoRoute --help
             }
             if ($useZigbuild) { $dockerArgs.Add('--zigbuild') }
             $dockerArgs.AddRange($passThrough)
-            return (Invoke-CargoDocker -ArgumentList $dockerArgs.ToArray())
+            return (Invoke-CargoDocker @dockerArgs)
         }
         default {
             Write-Warning "Unknown route '$route'; falling back to Windows."
-            return (Invoke-CargoWrapper -ArgumentList $passThrough.ToArray())
+            return (Invoke-CargoWrapper @passThrough)
         }
     }
 }

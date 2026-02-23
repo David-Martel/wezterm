@@ -63,7 +63,7 @@ function Convert-ArgsToShell {
     $double = '"'
     $replacement = $single + $double + $single + $double + $single
     $escaped = foreach ($v in $Values) {
-        if ($v -match '[\s''"\\]') {
+        if ($v -match '[\s''"\]') {
             $safe = $v.Replace($single, $replacement)
             $single + $safe + $single
         } else {
@@ -145,24 +145,27 @@ function Ensure-RunArgSeparator {
 
     $ArgsList = Normalize-ArgsList $ArgsList
     if (-not $ArgsList -or $ArgsList.Count -eq 0) { return $ArgsList }
-    if ($ArgsList -contains '--') { return $ArgsList }
+    
+    # If it already has a separator, respect it
+    if ([Array]::IndexOf($ArgsList, '--') -ge 0) { return $ArgsList }
 
     $primary = Get-PrimaryCommand $ArgsList
-    if ($primary -ne 'run') { return $ArgsList }
+    # Allow separator auto-insertion for run, test, and clippy
+    if ($primary -ne 'run' -and $primary -ne 'test' -and $primary -ne 'clippy') { return $ArgsList }
 
     $flagsWithValue = @(
-        '--bin','--example','--package','-p','--profile','--target','--features','--target-dir'
+        '--bin','--example','--package','-p','--profile','--target','--features','--target-dir','--test','--bench','--message-format'
     )
     $flagsNoValue = @(
-        '--release','--all-features','--no-default-features','--quiet','-q','-vv','-v','--verbose'
+        '--release','--all-features','--no-default-features','--quiet','-q','-vv','-v','--verbose','--workspace','--all-targets','--doc','--lib','--bins','--tests','--benches'
     )
 
-    $seenRun = $false
+    $seenPrimary = $false
     $expectValue = $false
     for ($i = 0; $i -lt $ArgsList.Count; $i++) {
         $arg = $ArgsList[$i]
-        if (-not $seenRun) {
-            if ($arg -eq 'run') { $seenRun = $true }
+        if (-not $seenPrimary) {
+            if ($arg -eq $primary) { $seenPrimary = $true }
             continue
         }
 

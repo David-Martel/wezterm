@@ -16,6 +16,8 @@ Invoke-CargoWrapper --wrapper-help
     )
 
     $rawArgs = if ($ArgumentList) { @($ArgumentList) } else { @() }
+    Write-CargoDebug "[DEBUG] Entry rawArgs: $($rawArgs -join '|')"
+
     if ($rawArgs -isnot [System.Array]) { $rawArgs = @($rawArgs) }
     $passThrough = New-Object System.Collections.Generic.List[string]
     $helpRequested = $false
@@ -229,7 +231,16 @@ Invoke-CargoWrapper --wrapper-help
 
             Write-CargoStatus -Phase 'Build' -Message "Running: cargo $($traceBuild -join ' ')" -Type 'Info' -MinVerbosity 2
 
-            & $rustupPath run stable cargo @traceBuild
+                        Write-CargoDebug "Executing: $rustupPath run stable cargo $($traceBuild -join ' ')"
+            $primary = Get-PrimaryCommand $traceBuild
+            if (@('build', 'check', 'test', 'run', 'clippy', 'bench') -contains $primary) {
+                $diagnostics = Invoke-CargoWithJson -RustupPath $rustupPath -CargoArgs $traceBuild
+                # Need to handle LASTEXITCODE manually if we want it here, but & inside Invoke-CargoWithJson sets it.
+                $cargoExitCode = $LASTEXITCODE
+            } else {
+                & $rustupPath run stable cargo @traceBuild
+                $cargoExitCode = $LASTEXITCODE
+            }
             $cargoExitCode = $LASTEXITCODE
             $buildElapsed = (Get-Date) - $buildStartTime
 
@@ -286,3 +297,4 @@ Invoke-CargoWrapper --wrapper-help
     Write-Host 'Install Rust using rustup or add rustup.exe to PATH.' -ForegroundColor Yellow
     return 1
 }
+

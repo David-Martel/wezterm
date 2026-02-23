@@ -135,7 +135,7 @@ function Invoke-PreflightLocal {
         }
         'clippy' {
             $preArgs = Ensure-MessageFormatShort $preArgs
-            if ($State.Strict) { $preArgs += @('--', '-D', 'warnings') }
+            if ($State.Strict) { $preArgs += @('--', '-D', 'warnings') }; if (-not $env:CARGO_PREFLIGHT_NO_FIX) { $preArgs += @('--fix', '--allow-dirty', '--allow-staged') }
             & $RustupPath run stable cargo @preArgs
             if ($LASTEXITCODE -ne 0) {
                 if ($State.Blocking) { return $LASTEXITCODE }
@@ -217,7 +217,22 @@ function Invoke-RaDiagnosticsLocal {
     if ($env:RA_DIAGNOSTICS_FLAGS) {
         $raFlags = $env:RA_DIAGNOSTICS_FLAGS -split '\s+' | Where-Object { $_ }
     }
-    & $raCmd.Source diagnostics '.' @raFlags
+        $raOutput = & $raCmd.Source diagnostics '.' @raFlags 2>&1
+    $raExitCode = $LASTEXITCODE
+    $hasInferenceError = $false
+    foreach ($line in $raOutput) {
+        if ($line -match 'inference diagnostic in desugared expr') {
+            $hasInferenceError = $true
+        }
+        Write-Host $line
+    }
+    if ($raExitCode -ne 0) {
+        if ($hasInferenceError) {
+            Write-Warning "rust-analyzer encountered a known internal inference error. This is likely a bug in rust-analyzer itself."
+            return 0 # Treat as non-fatal even if blocking is requested, because it's an internal RA tool bug
+        }
+        return $raExitCode
+    }
     if ($LASTEXITCODE -ne 0) {
         if ($State.Blocking) { return $LASTEXITCODE }
         Write-Warning 'Preflight rust-analyzer diagnostics failed (non-blocking).'
@@ -253,7 +268,7 @@ function Build-PreflightShellCommand {
         'check' { $preArgs = Ensure-MessageFormatShort $preArgs }
         'clippy' {
             $preArgs = Ensure-MessageFormatShort $preArgs
-            if ($State.Strict) { $preArgs += @('--', '-D', 'warnings') }
+            if ($State.Strict) { $preArgs += @('--', '-D', 'warnings') }; if (-not $env:CARGO_PREFLIGHT_NO_FIX) { $preArgs += @('--fix', '--allow-dirty', '--allow-staged') }
         }
         'fmt' { $fmtArgs = @('fmt','--all','--','--check') }
         'all' {

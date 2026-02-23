@@ -259,7 +259,7 @@ function Initialize-CargoEnv {
     if (-not $env:SCCACHE_STARTUP_TIMEOUT) { $env:SCCACHE_STARTUP_TIMEOUT = '15' }
     if (-not $env:SCCACHE_REQUEST_TIMEOUT) { $env:SCCACHE_REQUEST_TIMEOUT = '60' }
     if (-not $env:SCCACHE_DIRECT) { $env:SCCACHE_DIRECT = 'true' }
-    if (-not $env:SCCACHE_SERVER_PORT) { $env:SCCACHE_SERVER_PORT = '4226' }
+    if (-not $env:SCCACHE_SERVER_PORT) { $env:SCCACHE_SERVER_PORT = '4400' }
     if (-not $env:SCCACHE_LOG) { $env:SCCACHE_LOG = 'warn' }
     if (-not $env:SCCACHE_ERROR_LOG) { $env:SCCACHE_ERROR_LOG = (Join-Path $CacheRoot 'sccache\error.log') }
     if (-not $env:SCCACHE_NO_DAEMON) { $env:SCCACHE_NO_DAEMON = '0' }
