@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::windows::named_pipe::NamedPipeServer;
 use tokio::sync::mpsc;
+use tokio::io::split;
 use tokio::time;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -24,13 +25,16 @@ const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
 /// Connection timeout after no activity
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Represents a single utility connection
+/// Represents a single utility connection.
+///
+/// Fields that can change after creation use interior mutability (RwLock)
+/// so they can be updated through `Arc<Connection>` without &mut self.
 #[derive(Debug)]
 pub struct Connection {
     pub id: String,
-    pub name: Option<String>,
-    pub capabilities: Vec<String>,
-    pub subscriptions: Vec<EventSubscription>,
+    pub name: RwLock<Option<String>>,
+    pub capabilities: RwLock<Vec<String>>,
+    pub subscriptions: RwLock<Vec<EventSubscription>>,
     pub connected_at: Instant,
     pub last_activity: Arc<RwLock<Instant>>,
     pub tx: mpsc::UnboundedSender<JsonRpcMessage>,
@@ -40,28 +44,31 @@ impl Connection {
     pub fn new(tx: mpsc::UnboundedSender<JsonRpcMessage>) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
-            name: None,
-            capabilities: Vec::new(),
-            subscriptions: Vec::new(),
+            name: RwLock::new(None),
+            capabilities: RwLock::new(Vec::new()),
+            subscriptions: RwLock::new(Vec::new()),
             connected_at: Instant::now(),
             last_activity: Arc::new(RwLock::new(Instant::now())),
             tx,
         }
     }
 
-    pub fn register(&mut self, name: String, capabilities: Vec<String>) {
-        self.name = Some(name);
-        self.capabilities = capabilities;
+    /// Register the connection with a name and capabilities.
+    /// Uses interior mutability — safe to call through Arc<Connection>.
+    pub fn register(&self, name: String, capabilities: Vec<String>) {
+        *self.name.write() = Some(name);
+        *self.capabilities.write() = capabilities;
         self.update_activity();
     }
 
-    pub fn subscribe(&mut self, subscriptions: Vec<EventSubscription>) {
-        self.subscriptions.extend(subscriptions);
+    pub fn subscribe(&self, subscriptions: Vec<EventSubscription>) {
+        self.subscriptions.write().extend(subscriptions);
         self.update_activity();
     }
 
-    pub fn unsubscribe(&mut self, event_types: &[String]) {
+    pub fn unsubscribe(&self, event_types: &[String]) {
         self.subscriptions
+            .write()
             .retain(|sub| !event_types.contains(&sub.event_type));
         self.update_activity();
     }
@@ -76,6 +83,7 @@ impl Connection {
 
     pub fn is_subscribed_to(&self, event_type: &str) -> bool {
         self.subscriptions
+            .read()
             .iter()
             .any(|sub| sub.event_type == event_type)
     }
@@ -145,6 +153,7 @@ impl ConnectionManager {
                 entry
                     .value()
                     .name
+                    .read()
                     .as_ref()
                     .map(|n| n == name)
                     .unwrap_or(false)
@@ -238,11 +247,14 @@ impl ConnectionManager {
 
 /// Handle a single connection (reads messages from pipe)
 pub async fn handle_connection(
-    mut pipe: NamedPipeServer,
+    pipe: NamedPipeServer,
     connection: Arc<Connection>,
     router_tx: mpsc::UnboundedSender<(String, JsonRpcMessage)>,
 ) -> Result<()> {
-    let (tx, mut rx) = mpsc::unbounded_channel::<JsonRpcMessage>();
+    let (_tx, mut rx) = mpsc::unbounded_channel::<JsonRpcMessage>();
+
+    // Split pipe into independent read/write halves
+    let (read_half, mut write_half) = split(pipe);
 
     // Spawn writer task
     let connection_id = connection.id.clone();
@@ -250,7 +262,7 @@ pub async fn handle_connection(
         while let Some(message) = rx.recv().await {
             if let Ok(json) = message.to_string() {
                 let data = format!("{}\n", json);
-                if let Err(e) = pipe.write_all(data.as_bytes()).await {
+                if let Err(e) = write_half.write_all(data.as_bytes()).await {
                     error!(
                         connection_id = %connection_id,
                         error = %e,
@@ -258,7 +270,7 @@ pub async fn handle_connection(
                     );
                     break;
                 }
-                if let Err(e) = pipe.flush().await {
+                if let Err(e) = write_half.flush().await {
                     error!(
                         connection_id = %connection_id,
                         error = %e,
@@ -271,7 +283,7 @@ pub async fn handle_connection(
     });
 
     // Read messages from pipe
-    let reader = BufReader::new(pipe);
+    let reader = BufReader::new(read_half);
     let mut lines = reader.lines();
 
     while let Ok(Some(line)) = lines.next_line().await {

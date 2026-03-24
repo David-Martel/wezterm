@@ -304,7 +304,7 @@ impl GitStatusCache {
         let mut lines = Vec::new();
 
         for i in 0..blame.len() {
-            if let Some(hunk) = blame.get(i) {
+            if let Some(hunk) = blame.get_index(i) {
                 let commit = repo.find_commit(hunk.final_commit_id())?;
 
                 lines.push(BlameLine {
@@ -375,13 +375,10 @@ impl ParallelGitStatus {
 
             let statuses = repo.statuses(Some(&mut opts))?;
 
-            // Process statuses in parallel
-            let entries: Vec<_> = statuses
+            // Process statuses (StatusEntry contains raw pointers, not Send-safe
+            // for par_iter, so we extract data first then classify)
+            let results: Vec<(PathBuf, Status)> = statuses
                 .iter()
-                .collect();
-
-            let results: Vec<_> = entries
-                .par_iter()
                 .map(|entry| {
                     let path = PathBuf::from(entry.path().unwrap_or(""));
                     let status = entry.status();

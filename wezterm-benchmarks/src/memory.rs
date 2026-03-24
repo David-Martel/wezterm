@@ -80,27 +80,31 @@ impl PooledAllocation {
 /// Buffer pool for reusable byte buffers
 pub struct BufferPool {
     pool: Arc<Pool<Vec<u8>>>,
+    buffer_size: usize,
 }
 
 impl BufferPool {
     pub fn new(capacity: usize, buffer_size: usize) -> Self {
         Self {
             pool: Arc::new(Pool::new(capacity, move || vec![0u8; buffer_size])),
+            buffer_size,
         }
     }
 
-    pub fn acquire(&self) -> Reusable<Vec<u8>> {
-        self.pool.pull(|buf| {
-            buf.clear();
-            buf.resize(buf.capacity(), 0);
-        })
+    pub fn acquire(&self) -> Reusable<'_, Vec<u8>> {
+        let buf_size = self.buffer_size;
+        let mut reusable = self.pool.pull(move || vec![0u8; buf_size]);
+        reusable.clear();
+        let cap = reusable.capacity();
+        reusable.resize(cap, 0);
+        reusable
     }
 
-    pub fn acquire_sized(&self, size: usize) -> Reusable<Vec<u8>> {
-        self.pool.pull(move |buf| {
-            buf.clear();
-            buf.resize(size, 0);
-        })
+    pub fn acquire_sized(&self, size: usize) -> Reusable<'_, Vec<u8>> {
+        let mut reusable = self.pool.pull(move || vec![0u8; size]);
+        reusable.clear();
+        reusable.resize(size, 0);
+        reusable
     }
 }
 
@@ -116,8 +120,8 @@ impl<T: Default + Send + 'static> ObjectPool<T> {
         }
     }
 
-    pub fn acquire(&self) -> Reusable<T> {
-        self.pool.pull(|_| {})
+    pub fn acquire(&self) -> Reusable<'_, T> {
+        self.pool.pull(T::default)
     }
 }
 

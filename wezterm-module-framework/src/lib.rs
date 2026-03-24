@@ -50,10 +50,12 @@
 pub mod context;
 pub mod modules;
 pub mod registry;
+pub mod startup;
 
 // Re-export main types
 pub use context::ModuleContext;
 pub use registry::ModuleRegistry;
+pub use startup::initialize_modules;
 
 use async_trait::async_trait;
 use bitflags::bitflags;

@@ -125,7 +125,7 @@ Standalone changelog generation (no build).
 .\build-all.ps1
 ```
 - Builds with `release` profile
-- Installs to `~\.local\bin`
+- Installs to `~\bin`
 - Updates Lua modules and WezTerm config
 - Runs verification tests
 

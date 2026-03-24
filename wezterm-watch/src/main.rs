@@ -130,26 +130,41 @@ async fn main() -> Result<()> {
 
     // Main event loop
     let receiver = watcher.receiver();
+    let mut pending_events: Vec<(wezterm_watch::watcher::WatchEvent, Option<wezterm_watch::git::FileStatus>)> = Vec::new();
 
     while running.load(Ordering::SeqCst) {
         match receiver.recv_timeout(std::time::Duration::from_millis(100)) {
             Ok(event) => {
-                // Get git status for the file if git is enabled
-                let git_status = if let Some(monitor) = &git_monitor {
-                    if let Some(path) = event.path() {
-                        monitor.invalidate_cache(); // Force refresh on file changes
-                        monitor.get_file_status(path).ok().flatten()
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                pending_events.push((event, None));
 
-                // Format and print event
-                let output = formatter.format_event(&event, git_status.as_ref());
-                if !output.is_empty() {
-                    println!("{}", output);
+                // Drain any additional ready events without blocking
+                while let Ok(extra) = receiver.try_recv() {
+                    pending_events.push((extra, None));
+                }
+
+                // Single git status refresh for the entire batch
+                if let Some(monitor) = &git_monitor {
+                    monitor.invalidate_cache();
+                    // Fetch the status snapshot once, then resolve each path
+                    // against it without re-cloning the full HashMap.
+                    if let Ok(info) = monitor.get_status() {
+                        let repo_root = monitor.repo_root();
+                        for (evt, status_slot) in &mut pending_events {
+                            if let Some(path) = evt.path() {
+                                *status_slot = GitMonitor::resolve_file_status(
+                                    &info, path, repo_root,
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Format and print the whole batch
+                for (evt, git_status) in pending_events.drain(..) {
+                    let output = formatter.format_event(&evt, git_status.as_ref());
+                    if !output.is_empty() {
+                        println!("{output}");
+                    }
                 }
             }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {

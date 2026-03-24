@@ -11,11 +11,35 @@ Invoke-CargoWrapper --wrapper-help
 #>
     [CmdletBinding()]
     param(
-        [Parameter(ValueFromRemainingArguments = $true, Position = 0)]
+        [Parameter(Position = 0)]
+        [ValidateSet('build', 'check', 'test', 'run', 'clippy', 'bench', 'fmt', 'clean', 'doc', 'publish', 'update', 'tree', 'nextest', '')]
+        [string]$Action,
+
+        [switch]$Workspace,
+        [switch]$Release,
+        [string]$Package,
+        [string[]]$Features,
+        [switch]$AllFeatures,
+        [switch]$AllTargets,
+        [switch]$NoFailFast,
+
+        [Parameter(ValueFromRemainingArguments = $true)]
         [string[]]$ArgumentList
     )
 
-    $rawArgs = if ($ArgumentList) { @($ArgumentList) } else { @() }
+    # Build cargo args from named parameters
+    $builtArgs = @()
+    if ($Action) { $builtArgs += $Action }
+    if ($Workspace) { $builtArgs += '--workspace' }
+    if ($Release) { $builtArgs += '--release' }
+    if ($Package) { $builtArgs += @('-p', $Package) }
+    if ($Features) { $builtArgs += @('--features', ($Features -join ',')) }
+    if ($AllFeatures) { $builtArgs += '--all-features' }
+    if ($AllTargets) { $builtArgs += '--all-targets' }
+    if ($NoFailFast) { $builtArgs += '--no-fail-fast' }
+    if ($ArgumentList) { $builtArgs += @($ArgumentList) }
+
+    $rawArgs = if ($builtArgs) { @($builtArgs) } else { @() }
     Write-CargoDebug "[DEBUG] Entry rawArgs: $($rawArgs -join '|')"
 
     if ($rawArgs -isnot [System.Array]) { $rawArgs = @($rawArgs) }
@@ -40,7 +64,7 @@ Invoke-CargoWrapper --wrapper-help
         Write-Host '  - sccache enabled (RUSTC_WRAPPER=sccache)' -ForegroundColor Gray
         Write-Host '  - cache dir: T:\RustCache\sccache' -ForegroundColor Gray
         Write-Host '  - cargo target dir: T:\RustCache\cargo-target' -ForegroundColor Gray
-        Write-Host '  - sccache port: 4226' -ForegroundColor Gray
+        Write-Host '  - sccache port: 4400' -ForegroundColor Gray
         Write-Host ''
         Write-Host 'Optional accelerators (wrapper-only flags):' -ForegroundColor Yellow
         Write-Host '  --use-lld | --no-lld            Toggle lld-link (LLVM linker)' -ForegroundColor Gray

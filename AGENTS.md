@@ -261,6 +261,67 @@ make fmt                # Format code
 
 ---
 
+## Multi-Agent Coordination (Agent Bus)
+
+Multiple AI agents may work on this repo concurrently. The **Agent Bus** at `http://localhost:8400` provides coordination.
+
+### Required Protocol
+
+1. **Set presence** on session start with your agent ID and capabilities
+2. **Claim files** via `POST /channels/arbitrate/<path>` before editing — check for conflicts
+3. **Check messages** every 2-3 tool calls via `GET /messages?agent=<id>&since=10&encoding=toon`
+4. **Post completion summary** when done, then poll for follow-up tasks
+
+### Agent IDs
+
+| ID | Role |
+|----|------|
+| `claude` | Primary Claude Code session |
+| `claude-docs` | Documentation/CLAUDE.md work |
+| `claude-ux` | UX/UI layout and .wezterm.lua work |
+| `codex` | OpenAI Codex sessions |
+| `gemini` | Gemini CLI sessions |
+
+### Coordination Examples
+
+```bash
+# Announce presence
+curl -s -X POST http://localhost:8400/messages -H "Content-Type: application/json" \
+  -d '{"sender":"<agent-id>","recipient":"all","topic":"status","body":"ONLINE: working on <task>","tags":["repo:wezterm"]}'
+
+# Claim a file before editing
+curl -s -X POST http://localhost:8400/channels/arbitrate/wezterm-gui/src/main.rs \
+  -H "Content-Type: application/json" -d '{"agent":"<id>","reason":"fixing render bug"}'
+
+# Check for messages (TOON encoding saves 70% tokens)
+curl -s "http://localhost:8400/messages?agent=<id>&since=10&encoding=toon"
+
+# Direct message another agent
+curl -s -X POST http://localhost:8400/channels/direct/<target-agent> \
+  -H "Content-Type: application/json" -d '{"body":"Need API review","from":"<id>"}'
+```
+
+### Rules
+
+- Use `request_ack: true` for blocking handoffs
+- Use `thread_id` to group related messages
+- Keep messages short: current state, exact ask, expected output, relevant path
+- Never send secrets or credentials through the bus
+- See `~/.codex/docs/AGENT_BUS.md` for full protocol reference
+- See [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) for the repo-specific resource contention protocol
+
+### Resource Contention Protocol
+
+The short version for this repo:
+
+1. Use private `CARGO_TARGET_DIR` values by default for cargo work
+2. Share `sccache`, but never stop/reset it without notice and ack
+3. Treat repo-default `target/`, `Cargo.lock`, `~/bin/*` installs, runtime config, and WT settings as exclusive resources
+4. Post direct-channel `RESOURCE_START` / `RESOURCE_DONE` notifications for exclusive work
+5. If work can be namespaced safely, reroute it instead of blocking another agent
+
+---
+
 ## References
 
 - [Microsoft Rust Guidelines](https://microsoft.github.io/rust-guidelines/)

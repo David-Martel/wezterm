@@ -33,7 +33,7 @@
     Skip running verification tests
 
 .PARAMETER InstallPath
-    Custom installation path (defaults to $env:USERPROFILE\.local\bin)
+    Custom installation path (defaults to $env:USERPROFILE\bin)
 
 .PARAMETER Force
     Force reinstall even if binaries exist
@@ -89,7 +89,7 @@ param(
     [switch]$SkipTests,
 
     [Parameter()]
-    [string]$InstallPath = "$env:USERPROFILE\.local\bin",
+    [string]$InstallPath = "$env:USERPROFILE\bin",
 
     [Parameter()]
     [switch]$Force,
@@ -139,6 +139,9 @@ $Script:Config = @{
     # Lua modules to install
     LuaModules = @(
         'wezterm-utils.lua'
+    )
+    LuaModuleDirectories = @(
+        'wezterm-utils'
     )
 
     # Configuration files
@@ -578,6 +581,23 @@ function Install-LuaModules {
             Write-Status "$module not found - skipping" -Level Warning
         }
     }
+
+    foreach ($moduleDir in $Script:Config.LuaModuleDirectories) {
+        $sourceDir = Join-Path $Script:Config.RootDir $moduleDir
+
+        if (Test-Path $sourceDir) {
+            $destDir = Join-Path $weztermConfigDir $moduleDir
+
+            if (Test-Path $destDir) {
+                Remove-Item $destDir -Recurse -Force
+            }
+
+            Copy-Item $sourceDir $destDir -Recurse -Force
+            Write-Status "$moduleDir\* installed" -Level Success
+        } else {
+            Write-Status "$moduleDir not found - skipping" -Level Warning
+        }
+    }
 }
 
 function Update-WeztermConfig {
@@ -597,8 +617,10 @@ function Update-WeztermConfig {
         # Copy new config
         Copy-Item $configSource $configDest -Force
         Write-Status ".wezterm.lua updated" -Level Success
+    } elseif (Test-Path $configDest) {
+        Write-Status "Using existing home .wezterm.lua (no repo template present)" -Level Success
     } else {
-        Write-Status ".wezterm.lua not found in build directory" -Level Warning
+        Write-Status "No .wezterm.lua found in repo or home directory" -Level Warning
     }
 }
 
@@ -613,7 +635,11 @@ function Update-PathEnvironment {
     if ($currentPath -notlike "*$installDir*") {
         Write-Step "Adding $installDir to user PATH..."
 
-        $newPath = "$currentPath;$installDir"
+        $newPath = if ([string]::IsNullOrWhiteSpace($currentPath)) {
+            $installDir
+        } else {
+            "$currentPath;$installDir"
+        }
         [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
 
         Write-Status "PATH updated (restart terminal to apply)" -Level Success
@@ -949,6 +975,41 @@ function Invoke-Build {
             foreach ($binary in $Script:Config.RustBinaries) {
                 $sourcePath = $builtBinaries[$binary.Name]
                 Install-Binary -SourcePath $sourcePath -Name $binary.Name -DestinationDir $Script:Config.InstallPath
+            }
+
+            # Step 3b: Copy WezTerm companion DLLs to install path
+            # wezterm-gui.exe requires conpty.dll, libEGL.dll, libGLESv2.dll, OpenConsole.exe
+            # in the same directory. Source them from the official installation or .local/wezterm.
+            Write-Section "Installing WezTerm Companion Files"
+            $dllSources = @(
+                "$env:USERPROFILE\.local\wezterm",
+                "C:\Program Files\WezTerm"
+            )
+            $companionFiles = @('conpty.dll', 'libEGL.dll', 'libGLESv2.dll', 'OpenConsole.exe')
+            $dllSource = $null
+            foreach ($src in $dllSources) {
+                if (Test-Path (Join-Path $src 'conpty.dll')) {
+                    $dllSource = $src
+                    break
+                }
+            }
+            if ($dllSource) {
+                foreach ($file in $companionFiles) {
+                    $srcFile = Join-Path $dllSource $file
+                    if (Test-Path $srcFile) {
+                        Copy-Item $srcFile (Join-Path $Script:Config.InstallPath $file) -Force
+                        Write-Status "$file installed" -Level Success
+                    }
+                }
+                # Copy mesa fallback directory if present
+                $mesaSrc = Join-Path $dllSource 'mesa'
+                if (Test-Path $mesaSrc) {
+                    $mesaDest = Join-Path $Script:Config.InstallPath 'mesa'
+                    Copy-Item $mesaSrc $mesaDest -Recurse -Force
+                    Write-Status "mesa/ fallback drivers installed" -Level Success
+                }
+            } else {
+                Write-Status "WezTerm companion DLLs not found - GUI may not launch from install path" -Level Warning
             }
 
             # Step 4: Install Lua modules

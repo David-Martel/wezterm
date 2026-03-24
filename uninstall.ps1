@@ -76,7 +76,7 @@ $ProgressPreference = 'SilentlyContinue'
 # ============================================================================
 
 $Script:Config = @{
-    InstallPath = "$env:USERPROFILE\.local\bin"
+    InstallPath = "$env:USERPROFILE\bin"
     WeztermConfigDir = "$env:USERPROFILE\.config\wezterm"
     WeztermConfigFile = "$env:USERPROFILE\.wezterm.lua"
     BackupDir = "$env:USERPROFILE\.wezterm-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
@@ -88,6 +88,9 @@ $Script:Config = @{
 
     LuaModules = @(
         'wezterm-utils.lua'
+    )
+    LuaModuleDirectories = @(
+        'wezterm-utils'
     )
 
     ConfigFiles = @(
@@ -194,6 +197,23 @@ function New-Backup {
             }
         }
 
+        foreach ($moduleDir in $Script:Config.LuaModuleDirectories) {
+            $sourcePath = Join-Path $Script:Config.WeztermConfigDir $moduleDir
+
+            if (Test-Path $sourcePath) {
+                $destPath = Join-Path $Script:Config.BackupDir "lua-modules\$moduleDir"
+                $destDir = Split-Path $destPath -Parent
+
+                if (-not (Test-Path $destDir)) {
+                    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                }
+
+                Copy-Item $sourcePath $destPath -Recurse -Force
+                Write-Status "Backed up: $moduleDir" -Level Success
+                $itemsBackedUp++
+            }
+        }
+
         # Backup config file
         if (Test-Path $Script:Config.WeztermConfigFile) {
             $destPath = Join-Path $Script:Config.BackupDir ".wezterm.lua"
@@ -276,6 +296,26 @@ function Remove-LuaModules {
             }
         } else {
             Write-Status "Not found: $module (already removed)" -Level Info
+        }
+    }
+
+    foreach ($moduleDir in $Script:Config.LuaModuleDirectories) {
+        $modulePath = Join-Path $Script:Config.WeztermConfigDir $moduleDir
+
+        if (Test-Path $modulePath) {
+            if ($DryRun) {
+                Write-Status "DRY RUN: Would remove $moduleDir" -Level Warning
+            } else {
+                try {
+                    Remove-Item $modulePath -Recurse -Force
+                    Write-Status "Removed: $moduleDir" -Level Success
+                    $removed++
+                } catch {
+                    Write-Status "Failed to remove $moduleDir`: $_" -Level Error
+                }
+            }
+        } else {
+            Write-Status "Not found: $moduleDir (already removed)" -Level Info
         }
     }
 

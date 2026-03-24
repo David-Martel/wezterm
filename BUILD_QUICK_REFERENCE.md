@@ -42,7 +42,7 @@ Install-DevTools
 | `-Sccache` | String | `auto` | Build cache: `auto`, `on`, `off` |
 | `-Lld` | String | `auto` | Fast linker: `auto`, `on`, `off` |
 | `-SkipTests` | Switch | Off | Skip verification tests |
-| `-InstallPath` | String | `~\.local\bin` | Installation directory |
+| `-InstallPath` | String | `~\bin` | Installation directory |
 | `-Force` | Switch | Off | Force reinstall |
 | `-Release` | Switch | Off | Create release packages + install |
 | `-Package` | Switch | Off | Create packages only (no install) |
@@ -79,7 +79,7 @@ ls artifacts/
 
 | Item | Location |
 |------|----------|
-| Binaries | `~\.local\bin\` (or custom `-InstallPath`) |
+| Binaries | `~\bin\` (or custom `-InstallPath`) |
 | Release packages | `artifacts/` |
 | Lua modules | `~\.config\wezterm\` |
 | WezTerm config | `~\.wezterm.lua` |

@@ -2,8 +2,9 @@
 //!
 //! This module provides:
 //! - Background file watching with debouncing
-//! - Lua API for registering watches (events logged, callbacks planned for future)
+//! - Lua API for registering watches and polling events
 //! - Gitignore-aware filtering
+//! - MuxNotification forwarding for GUI-thread integration
 //!
 //! ## Thread Safety
 //!
@@ -14,7 +15,13 @@
 //!
 //! ```lua
 //! local id = wezterm.watcher.watch("/path/to/dir", { recursive = true })
-//! -- Events are logged to wezterm's log
+//!
+//! -- Poll for buffered events (returns array of { subscription_id, kind, path })
+//! local events = wezterm.watcher.poll_events(50)
+//! for _, ev in ipairs(events) do
+//!   print(ev.kind, ev.path)
+//! end
+//!
 //! wezterm.watcher.unwatch(id)
 //! ```
 
@@ -23,13 +30,14 @@ use anyhow::Result;
 use async_trait::async_trait;
 use config::lua::get_or_create_sub_module;
 use crossbeam::channel::{bounded, Receiver, Sender};
+use mux::{Mux, MuxNotification};
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use wezterm_fs_utils::watcher::{WatchEvent, Watcher};
+use wezterm_fs_utils::watcher::{WatchEvent, WatchEventKind, Watcher};
 
 /// A callback ID for managing watch subscriptions.
 pub type WatchCallbackId = u64;
@@ -45,12 +53,28 @@ struct WatchSubscription {
     forwarder_handle: Option<JoinHandle<()>>,
 }
 
+/// Maximum number of events to buffer before dropping the oldest.
+const EVENT_QUEUE_CAPACITY: usize = 512;
+
+/// A stored watch event with its subscription ID, suitable for Lua polling.
+#[derive(Debug, Clone)]
+pub struct StoredWatchEvent {
+    /// The subscription that produced this event.
+    pub subscription_id: WatchCallbackId,
+    /// The kind of event as a string (e.g., "create", "modify", "delete").
+    pub kind: String,
+    /// The affected path, if available.
+    pub path: Option<PathBuf>,
+}
+
 /// Shared state that can be accessed from Lua closures.
 #[derive(Clone)]
 pub struct WatcherModuleHandle {
     subscriptions: Arc<Mutex<HashMap<WatchCallbackId, WatchSubscription>>>,
     next_id: Arc<AtomicU64>,
     event_tx: Arc<Mutex<Option<Sender<(WatchCallbackId, WatchEvent)>>>>,
+    /// Buffered events that can be polled from Lua.
+    event_queue: Arc<Mutex<VecDeque<StoredWatchEvent>>>,
 }
 
 impl WatcherModuleHandle {
@@ -129,6 +153,25 @@ impl WatcherModuleHandle {
     pub fn subscription_count(&self) -> usize {
         self.subscriptions.lock().len()
     }
+
+    /// Drain all buffered events, returning up to `max` entries.
+    ///
+    /// Events are removed from the queue once returned.
+    pub fn poll_events(&self, max: usize) -> Vec<StoredWatchEvent> {
+        let mut queue = self.event_queue.lock();
+        let count = max.min(queue.len());
+        queue.drain(..count).collect()
+    }
+
+    /// Push an event into the shared queue (called from the aggregator thread).
+    fn push_event(&self, event: StoredWatchEvent) {
+        let mut queue = self.event_queue.lock();
+        if queue.len() >= EVENT_QUEUE_CAPACITY {
+            // Drop oldest event to stay within capacity
+            queue.pop_front();
+        }
+        queue.push_back(event);
+    }
 }
 
 /// File watcher module.
@@ -153,6 +196,7 @@ impl WatcherModule {
                 subscriptions: Arc::new(Mutex::new(HashMap::new())),
                 next_id: Arc::new(AtomicU64::new(1)),
                 event_tx: Arc::new(Mutex::new(Some(event_tx))),
+                event_queue: Arc::new(Mutex::new(VecDeque::new())),
             },
             event_rx: Some(event_rx),
             shutdown_tx: None,
@@ -234,45 +278,78 @@ impl Module for WatcherModule {
         // Take the event receiver for the event processing loop
         let event_rx = self.event_rx.take();
 
-        // Spawn event processing thread
-        // Note: Lua callback invocation requires the Lua runtime context,
-        // which is not available in this background thread. Events are logged
-        // and could be forwarded to the GUI thread via Mux notifications.
-        if let Some(rx) = event_rx {
-            thread::spawn(move || {
-                loop {
-                    // Check for shutdown
-                    if shutdown_rx.try_recv().is_ok() {
-                        log::debug!("Watcher event loop shutting down");
-                        break;
-                    }
+        // Clone the handle so the aggregator thread can push events
+        // into the shared queue and notify the Mux.
+        let handle = self.handle.clone();
 
-                    // Process events with timeout
-                    match rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                        Ok((id, event)) => {
-                            // Log the event with full details
-                            if let Some(ref path) = event.path {
-                                log::info!(
-                                    "File watch event [subscription {}]: {:?} - {}",
-                                    id,
-                                    event.kind,
-                                    path.display()
-                                );
-                            } else {
-                                log::info!(
-                                    "File watch event [subscription {}]: {:?}",
-                                    id,
-                                    event.kind
-                                );
-                            }
-                            // Events can be forwarded to GUI via MuxNotification system
-                            // or through a dedicated event channel to the Lua runtime
+        // Spawn event processing thread.
+        //
+        // Events are:
+        //   1. Stored in a bounded queue for Lua polling via `poll_events`.
+        //   2. Forwarded to the Mux notification system so GUI subscribers
+        //      (e.g. Lua `wezterm.on("file-watch-event", ...)`) can react.
+        if let Some(rx) = event_rx {
+            thread::Builder::new()
+                .name("watcher-aggregator".to_string())
+                .spawn(move || {
+                    loop {
+                        // Check for shutdown
+                        if shutdown_rx.try_recv().is_ok() {
+                            log::debug!("Watcher event loop shutting down");
+                            break;
                         }
-                        Err(crossbeam::channel::RecvTimeoutError::Timeout) => continue,
-                        Err(crossbeam::channel::RecvTimeoutError::Disconnected) => break,
+
+                        // Process events with timeout
+                        match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                            Ok((id, event)) => {
+                                let kind_str = match &event.kind {
+                                    WatchEventKind::Create => "create",
+                                    WatchEventKind::Modify => "modify",
+                                    WatchEventKind::Delete => "delete",
+                                    WatchEventKind::Rename { .. } => "rename",
+                                    WatchEventKind::Error(_) => "error",
+                                };
+
+                                if let Some(ref path) = event.path {
+                                    log::info!(
+                                        "File watch event [subscription {}]: {} - {}",
+                                        id,
+                                        kind_str,
+                                        path.display()
+                                    );
+                                } else {
+                                    log::info!(
+                                        "File watch event [subscription {}]: {}",
+                                        id,
+                                        kind_str
+                                    );
+                                }
+
+                                // 1. Store in the shared queue for Lua polling
+                                handle.push_event(StoredWatchEvent {
+                                    subscription_id: id,
+                                    kind: kind_str.to_string(),
+                                    path: event.path.clone(),
+                                });
+
+                                // 2. Notify the Mux so GUI-thread subscribers
+                                //    can process the event. Use Alert with a
+                                //    descriptive message that includes the
+                                //    subscription ID and event details.
+                                if let Some(mux) = Mux::try_get() {
+                                    // Send Empty notification as a lightweight
+                                    // "something changed" signal. Subscribers
+                                    // interested in watcher events should poll
+                                    // via the Lua API (wezterm.watcher.poll_events).
+                                    mux.notify(MuxNotification::Empty);
+                                }
+                            }
+                            Err(crossbeam::channel::RecvTimeoutError::Timeout) => continue,
+                            Err(crossbeam::channel::RecvTimeoutError::Disconnected) => break,
+                        }
                     }
-                }
-            });
+                })
+                .ok();
         }
 
         self.state = ModuleState::Running;
@@ -371,6 +448,31 @@ impl Module for WatcherModule {
                         )))
                     }
                 }
+            })?,
+        )?;
+
+        // wezterm.watcher.poll_events(max)
+        // Drain up to `max` buffered events (default: 100).
+        // Returns: array of tables { subscription_id, kind, path }
+        let poll_handle = handle.clone();
+        watcher_mod.set(
+            "poll_events",
+            lua.create_function(move |lua_ctx, max: Option<usize>| {
+                let max = max.unwrap_or(100);
+                let events = poll_handle.poll_events(max);
+
+                let table = lua_ctx.create_table()?;
+                for (i, ev) in events.iter().enumerate() {
+                    let entry = lua_ctx.create_table()?;
+                    entry.set("subscription_id", ev.subscription_id)?;
+                    entry.set("kind", ev.kind.as_str())?;
+                    if let Some(ref p) = ev.path {
+                        entry.set("path", p.to_string_lossy().to_string())?;
+                    }
+                    table.set(i + 1, entry)?;
+                }
+
+                Ok(table)
             })?,
         )?;
 

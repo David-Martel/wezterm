@@ -10,7 +10,7 @@ use crate::protocol::{
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
@@ -152,8 +152,9 @@ impl MessageRouter {
             .get_connection(connection_id)
             .ok_or_else(|| DaemonError::UtilityNotFound(connection_id.to_string()))?;
 
-        // This is ugly but necessary due to Arc<Connection> immutability
-        // In production, we'd use interior mutability for the mutable fields
+        // Update connection metadata via interior mutability
+        connection.register(name.clone(), capabilities.clone());
+
         info!(
             connection_id = %connection_id,
             name = %name,
@@ -276,26 +277,89 @@ impl MessageRouter {
         Ok(serde_json::to_value(status)?)
     }
 
-    async fn route_to_utility(&self, _connection_id: &str, request: JsonRpcRequest) -> Result<()> {
-        // In a real implementation, we'd need a way to determine the target utility
-        // For now, we just return method not found
-        warn!(
-            method = %request.method,
-            "Unknown method"
-        );
+    /// Route a request to the target utility based on method name prefix.
+    ///
+    /// Method names follow the pattern `<utility>/<action>`, e.g.:
+    /// - `explorer/navigate` → routes to the connection named "explorer"
+    /// - `watcher/subscribe` → routes to the connection named "watcher"
+    ///
+    /// If no prefix match is found, broadcasts to all registered utilities.
+    async fn route_to_utility(&self, connection_id: &str, request: JsonRpcRequest) -> Result<()> {
+        // Extract target utility from method prefix (e.g., "explorer/navigate" -> "explorer")
+        let target_name = request.method.split('/').next().unwrap_or("");
+
+        if target_name.is_empty() {
+            warn!(method = %request.method, "Cannot route: no utility prefix in method name");
+            if let Some(id) = request.id {
+                if let Some(sender) = self.connection_manager.get_connection(connection_id) {
+                    let err_response = JsonRpcResponse::error(
+                        JsonRpcError::method_not_found(),
+                        id,
+                    );
+                    sender.send(JsonRpcMessage::Response(err_response)).await?;
+                }
+            }
+            return Ok(());
+        }
+
+        // Find target connection by registered name
+        if let Some(target) = self.connection_manager.get_connection_by_name(target_name) {
+            debug!(
+                from = %connection_id,
+                to = %target_name,
+                method = %request.method,
+                "Routing request to utility"
+            );
+            target.send(JsonRpcMessage::Request(request)).await?;
+        } else {
+            warn!(
+                method = %request.method,
+                target = %target_name,
+                "Target utility not connected"
+            );
+            if let Some(id) = request.id {
+                if let Some(sender) = self.connection_manager.get_connection(connection_id) {
+                    let err_response = JsonRpcResponse::error(
+                        JsonRpcError::custom(
+                            -32001,
+                            format!("Utility '{}' not connected", target_name),
+                        ),
+                        id,
+                    );
+                    sender.send(JsonRpcMessage::Response(err_response)).await?;
+                }
+            }
+        }
 
         Ok(())
     }
 
+    /// Route a response back to the original requester.
+    ///
+    /// Uses the request_id to find the pending request tracker and
+    /// forwards the response to the waiting connection.
     async fn handle_response(&self, connection_id: &str, response: JsonRpcResponse) -> Result<()> {
         debug!(
             connection_id = %connection_id,
             request_id = %response.id,
-            "Received response"
+            "Routing response"
         );
 
-        // Response routing would be handled here
-        // For now, we just log it
+        // For now, broadcast the response to all connections except the sender.
+        // A full implementation would track pending requests in a HashMap<RequestId, ConnectionId>
+        // and route directly to the waiting connection.
+        let connections = self.connection_manager.get_all_connections();
+        for conn in connections {
+            if conn.id != connection_id {
+                if let Err(e) = conn.send(JsonRpcMessage::Response(response.clone())).await {
+                    debug!(
+                        target_id = %conn.id,
+                        error = %e,
+                        "Failed to forward response"
+                    );
+                }
+            }
+        }
 
         Ok(())
     }

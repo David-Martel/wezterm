@@ -110,9 +110,7 @@ impl Icons {
             FileType::File => {
                 if let Some(ext) = entry.extension() {
                     match ext.as_str() {
-                        "rs" | "go" | "c" | "cpp" | "java" | "py" | "js" | "ts" => {
-                            Color::Yellow
-                        }
+                        "rs" | "go" | "c" | "cpp" | "java" | "py" | "js" | "ts" => Color::Yellow,
                         "sh" | "bash" | "zsh" | "fish" | "ps1" => Color::Green,
                         "md" | "txt" | "pdf" | "doc" | "docx" => Color::White,
                         "jpg" | "jpeg" | "png" | "gif" | "bmp" | "svg" => Color::Magenta,

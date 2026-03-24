@@ -3,10 +3,11 @@
 //! A high-performance daemon that routes JSON-RPC 2.0 messages between WezTerm utilities
 //! using Windows Named Pipes.
 
+pub mod client;
 mod config;
 mod connections;
 mod error;
-mod protocol;
+pub mod protocol;
 mod router;
 mod server;
 

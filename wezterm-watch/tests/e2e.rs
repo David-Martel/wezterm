@@ -331,13 +331,16 @@ fn test_cli_watch_events_format_output() {
         .spawn()
         .expect("Failed to spawn watcher");
 
-    thread::sleep(Duration::from_millis(300));
+    // Allow extra startup time on Windows where watcher initialization
+    // and debouncer setup can take longer under load.
+    thread::sleep(Duration::from_millis(800));
 
     // Create a file
     let test_file = watch_path.join("events_test.txt");
     fs::write(&test_file, "content").unwrap();
 
-    thread::sleep(Duration::from_millis(500));
+    // Wait for debouncer to flush (default debounce is 500ms + processing)
+    thread::sleep(Duration::from_millis(1200));
 
     child.kill().ok();
     let output = child.wait_with_output().unwrap();

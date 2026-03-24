@@ -48,6 +48,11 @@ wezterm-watch . --no-git
 wezterm-watch . --no-gitignore
 ```
 
+### Install For Interactive Use
+
+Copy or install the compiled binary to `C:\Users\david\bin\wezterm-watch.exe` so
+WezTerm and wrapper scripts resolve it consistently.
+
 ### Command-Line Options
 
 ```

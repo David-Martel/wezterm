@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileStatus {
     Modified,
-    #[allow(dead_code)] // Used in tests and reserved for future use
     Added,
     Deleted,
     Renamed,
@@ -101,7 +100,10 @@ impl GitMonitor {
     }
 
     pub fn get_status(&self) -> Result<GitInfo> {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = match self.cache.lock() {
+            Ok(cache) => cache,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         // Return cached info if still valid
         if let Some(info) = &cache.info {
@@ -119,8 +121,9 @@ impl GitMonitor {
     }
 
     pub fn invalidate_cache(&self) {
-        let mut cache = self.cache.lock().unwrap();
-        cache.last_update = Instant::now() - Duration::from_secs(10);
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.last_update = Instant::now() - Duration::from_secs(10);
+        }
     }
 
     fn fetch_status(&self) -> Result<GitInfo> {
@@ -323,22 +326,33 @@ impl GitMonitor {
 
     pub fn get_file_status(&self, path: &Path) -> Result<Option<FileStatus>> {
         let info = self.get_status()?;
+        Ok(Self::resolve_file_status(&info, path, self.repo_root()))
+    }
 
+    /// Resolve a file's status from a pre-fetched `GitInfo` snapshot.
+    ///
+    /// Use this when processing a batch of events to avoid cloning the
+    /// cached status HashMap on every lookup.
+    pub fn resolve_file_status(
+        info: &GitInfo,
+        path: &Path,
+        repo_root: Option<&Path>,
+    ) -> Option<FileStatus> {
         // Try exact match first
         if let Some(status) = info.file_statuses.get(path) {
-            return Ok(Some(status.clone()));
+            return Some(status.clone());
         }
 
         // Try relative to repo root
-        if let Some(repo_root) = self.repo_root() {
-            if let Ok(rel_path) = path.strip_prefix(repo_root) {
+        if let Some(root) = repo_root {
+            if let Ok(rel_path) = path.strip_prefix(root) {
                 if let Some(status) = info.file_statuses.get(rel_path) {
-                    return Ok(Some(status.clone()));
+                    return Some(status.clone());
                 }
             }
         }
 
-        Ok(None)
+        None
     }
 }
 

@@ -704,6 +704,12 @@ fn setup_mux(
     })?;
     mux.set_default_domain(&domain);
 
+    // Initialize the module framework after Mux is fully configured.
+    // This registers built-in modules (fs-explorer, watcher) with the
+    // global ModuleRegistry. Modules are registered but not started —
+    // they activate when their Lua APIs are first called.
+    wezterm_module_framework::initialize_modules();
+
     Ok(mux)
 }
 

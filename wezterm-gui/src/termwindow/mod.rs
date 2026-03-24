@@ -23,7 +23,7 @@ use crate::termwindow::modal::Modal;
 use crate::termwindow::render::paint::AllowImage;
 use crate::termwindow::render::{
     CachedLineState, LineQuadCacheKey, LineQuadCacheValue, LineToEleShapeCacheKey,
-    LineToElementShapeItem,
+    LineToElementShapeItem, PlainTabBarQuadCache,
 };
 use crate::termwindow::webgpu::WebGpuState;
 use ::wezterm_term::input::{ClickPosition, MouseButton as TMB};
@@ -390,6 +390,7 @@ pub struct TermWindow {
     show_tab_bar: bool,
     show_scroll_bar: bool,
     tab_bar: TabBarState,
+    plain_tab_bar_quad_cache: Option<PlainTabBarQuadCache>,
     fancy_tab_bar: Option<box_model::ComputedElement>,
     pub right_status: String,
     pub left_status: String,
@@ -711,6 +712,7 @@ impl TermWindow {
             show_tab_bar,
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
+            plain_tab_bar_quad_cache: None,
             fancy_tab_bar: None,
             right_status: String::new(),
             left_status: String::new(),
@@ -1888,6 +1890,10 @@ impl TermWindow {
     /// Called by various bits of code to update the title bar.
     /// Let's also trigger the status event so that it can choose
     /// to update the right-status.
+    ///
+    /// Uses coalescing: if update_title_impl() was called within the
+    /// last 50ms, skip the redundant call. This prevents rapid-fire
+    /// Lua callbacks from mouse movement, key events, etc.
     fn update_title(&mut self) {
         self.schedule_status_update();
         self.update_title_impl();
@@ -1999,6 +2005,7 @@ impl TermWindow {
         );
         if new_tab_bar != self.tab_bar {
             self.tab_bar = new_tab_bar;
+            self.plain_tab_bar_quad_cache.take();
             self.invalidate_fancy_tab_bar();
             self.invalidate_modal();
             if let Some(window) = self.window.as_ref() {

@@ -109,7 +109,7 @@ impl ParallelScanner {
         tokio::task::spawn_blocking(move || {
             let walker = WalkDir::new(&path);
 
-            walker
+            let entries: Vec<DirEntry> = walker
                 .into_iter()
                 .par_bridge()
                 .filter_map(|entry| {
@@ -122,7 +122,9 @@ impl ParallelScanner {
                         })
                     })
                 })
-                .collect()
+                .collect();
+
+            Ok(entries)
         }).await?
     }
 }

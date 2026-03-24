@@ -61,6 +61,35 @@ pub struct JsonSummary {
     pub total_files: usize,
 }
 
+/// Pre-computed file status counts to avoid repeated iteration.
+struct StatusCounts {
+    modified: usize,
+    untracked: usize,
+    staged: usize,
+}
+
+impl StatusCounts {
+    /// Compute all counts in a single pass over the status map.
+    fn from_info(info: &GitInfo) -> Self {
+        let mut modified = 0;
+        let mut untracked = 0;
+        let mut staged = 0;
+        for status in info.file_statuses.values() {
+            match status {
+                FileStatus::Modified => modified += 1,
+                FileStatus::Untracked => untracked += 1,
+                FileStatus::Staged => staged += 1,
+                _ => {}
+            }
+        }
+        Self {
+            modified,
+            untracked,
+            staged,
+        }
+    }
+}
+
 pub struct OutputFormatter {
     format: OutputFormat,
 }
@@ -209,26 +238,15 @@ impl OutputFormatter {
     }
 
     fn format_git_json(&self, info: &GitInfo) -> String {
+        let counts = StatusCounts::from_info(info);
         let summary = JsonSummary {
             git_branch: Some(info.branch.clone()),
             git_ahead: Some(info.ahead),
             git_behind: Some(info.behind),
             has_conflicts: info.has_conflicts,
-            modified_files: info
-                .file_statuses
-                .values()
-                .filter(|s| **s == FileStatus::Modified)
-                .count(),
-            untracked_files: info
-                .file_statuses
-                .values()
-                .filter(|s| **s == FileStatus::Untracked)
-                .count(),
-            staged_files: info
-                .file_statuses
-                .values()
-                .filter(|s| **s == FileStatus::Staged)
-                .count(),
+            modified_files: counts.modified,
+            untracked_files: counts.untracked,
+            staged_files: counts.staged,
             total_files: info.file_statuses.len(),
         };
 
@@ -260,59 +278,31 @@ impl OutputFormatter {
             output.push_str(&format!("{}\n", "CONFLICTS DETECTED".red().bold()));
         }
 
-        // File counts
-        let modified = info
-            .file_statuses
-            .values()
-            .filter(|s| **s == FileStatus::Modified)
-            .count();
-        let untracked = info
-            .file_statuses
-            .values()
-            .filter(|s| **s == FileStatus::Untracked)
-            .count();
-        let staged = info
-            .file_statuses
-            .values()
-            .filter(|s| **s == FileStatus::Staged)
-            .count();
+        // File counts (single pass)
+        let counts = StatusCounts::from_info(info);
 
         output.push_str(&format!(
             "{} {} modified, {} staged, {} untracked\n",
             "Files:".cyan().bold(),
-            modified,
-            staged,
-            untracked
+            counts.modified,
+            counts.staged,
+            counts.untracked
         ));
 
         output
     }
 
     fn format_git_summary(&self, info: &GitInfo) -> String {
-        let modified = info
-            .file_statuses
-            .values()
-            .filter(|s| **s == FileStatus::Modified)
-            .count();
-        let untracked = info
-            .file_statuses
-            .values()
-            .filter(|s| **s == FileStatus::Untracked)
-            .count();
-        let staged = info
-            .file_statuses
-            .values()
-            .filter(|s| **s == FileStatus::Staged)
-            .count();
+        let counts = StatusCounts::from_info(info);
 
         format!(
             "[{}] ↑{} ↓{} | M:{} S:{} U:{}{}",
             info.branch,
             info.ahead,
             info.behind,
-            modified,
-            staged,
-            untracked,
+            counts.modified,
+            counts.staged,
+            counts.untracked,
             if info.has_conflicts {
                 " [CONFLICT]"
             } else {

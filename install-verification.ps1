@@ -46,7 +46,7 @@ $ProgressPreference = 'SilentlyContinue'
 # ============================================================================
 
 $Script:Config = @{
-    InstallPath = "$env:USERPROFILE\.local\bin"
+    InstallPath = "$env:USERPROFILE\bin"
     WeztermConfigDir = "$env:USERPROFILE\.config\wezterm"
     WeztermConfigFile = "$env:USERPROFILE\.wezterm.lua"
 
@@ -70,6 +70,13 @@ $Script:Config = @{
             Name = 'wezterm-utils'
             File = 'wezterm-utils.lua'
             Description = 'Utilities integration module'
+        }
+    )
+    LuaModuleDirectories = @(
+        @{
+            Name = 'wezterm-utils-submodules'
+            File = 'wezterm-utils'
+            Description = 'Utilities support module tree'
         }
     )
 
@@ -283,6 +290,24 @@ function Test-LuaModules {
         }
     }
 
+    foreach ($moduleDir in $Script:Config.LuaModuleDirectories) {
+        $modulePath = Join-Path $configDir $moduleDir.File
+        $exists = Test-Path $modulePath
+
+        Write-TestResult -Test "$($moduleDir.Description) installed" -Passed $exists `
+            -Message $modulePath
+
+        if (-not $exists) {
+            Write-Recommendation "Run build-all.ps1 to install Lua module directories"
+            $allPassed = $false
+        }
+
+        $Script:Results.LuaModules[$moduleDir.Name] = @{
+            Exists = $exists
+            Path = $modulePath
+        }
+    }
+
     return $allPassed
 }
 
@@ -297,7 +322,7 @@ function Test-WeztermConfiguration {
         -Message $configPath
 
     if (-not $exists) {
-        Write-Recommendation "Run build-all.ps1 to install .wezterm.lua configuration"
+        Write-Recommendation "Ensure $configPath exists before launching WezTerm"
         $Script:Results.Configuration['Exists'] = $false
         return $false
     }
@@ -421,11 +446,8 @@ function Write-Summary {
     Write-Host "  Total Tests: $totalTests" -ForegroundColor Cyan
     Write-Host "  Passed: $passedTests" -ForegroundColor Green
     Write-Host "  Failed: $($totalTests - $passedTests)" -ForegroundColor Red
-    Write-Host "  Success Rate: $percentPassed%" -ForegroundColor $(
-        if ($percentPassed -ge 90) { 'Green' }
-        elseif ($percentPassed -ge 70) { 'Yellow' }
-        else { 'Red' }
-    )
+    $rateColor = if ($percentPassed -ge 90) { 'Green' } elseif ($percentPassed -ge 70) { 'Yellow' } else { 'Red' }
+    Write-Host "  Success Rate: $percentPassed%" -ForegroundColor $rateColor
     Write-Host ""
 
     if ($Script:Results.Overall) {

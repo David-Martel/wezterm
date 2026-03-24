@@ -7,7 +7,7 @@ mod keybindings;
 mod operations;
 mod ui;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use app::App;
 use clap::Parser;
 use crossterm::{
@@ -15,8 +15,14 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use futures::FutureExt;
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{env, io, path::{Path, PathBuf}, time::Duration};
+use std::{
+    any::Any,
+    env, io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 // Import library modules
 use wezterm_fs_explorer::ipc_client::{self, IpcClient};
@@ -38,6 +44,67 @@ struct Args {
     ipc_socket: Option<String>,
 }
 
+struct TerminalSession {
+    terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    restored: bool,
+}
+
+impl TerminalSession {
+    fn enter() -> Result<Self> {
+        enable_raw_mode().context("failed to enable raw mode")?;
+
+        let session = (|| -> Result<Self> {
+            let mut stdout = io::stdout();
+            execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
+                .context("failed to enter alternate screen")?;
+            let backend = CrosstermBackend::new(stdout);
+            let terminal =
+                Terminal::new(backend).context("failed to initialize terminal backend")?;
+            Ok(Self {
+                terminal,
+                restored: false,
+            })
+        })();
+
+        if session.is_err() {
+            let _ = disable_raw_mode();
+            let mut stdout = io::stdout();
+            let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
+        }
+
+        session
+    }
+
+    fn terminal_mut(&mut self) -> &mut Terminal<CrosstermBackend<io::Stdout>> {
+        &mut self.terminal
+    }
+
+    fn restore(&mut self) -> Result<()> {
+        if self.restored {
+            return Ok(());
+        }
+
+        disable_raw_mode().context("failed to disable raw mode")?;
+        execute!(
+            self.terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )
+        .context("failed to leave alternate screen")?;
+        self.terminal
+            .show_cursor()
+            .context("failed to restore cursor state")?;
+        self.restored = true;
+        Ok(())
+    }
+}
+
+impl Drop for TerminalSession {
+    fn drop(&mut self) {
+        let _ = self.restore();
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
@@ -48,10 +115,15 @@ async fn main() -> Result<()> {
 
     let start_dir = args
         .directory
-        .unwrap_or_else(|| env::current_dir().expect("Failed to get current directory"));
+        .map(Ok)
+        .unwrap_or_else(|| env::current_dir().context("failed to get current directory"))?;
 
     if !start_dir.exists() {
         anyhow::bail!("Directory does not exist: {}", start_dir.display());
+    }
+
+    if !start_dir.is_dir() {
+        anyhow::bail!("Path is not a directory: {}", start_dir.display());
     }
 
     // Initialize IPC client if socket path provided
@@ -96,12 +168,7 @@ async fn run_interactive_mode(
     start_dir: &Path,
     mut ipc_client: Option<&mut IpcClient>,
 ) -> Result<Vec<PathBuf>> {
-    // Setup terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal_session = TerminalSession::enter()?;
 
     // Create app
     let mut app = App::new(start_dir.to_path_buf())?;
@@ -121,19 +188,22 @@ async fn run_interactive_mode(
         }
     }
 
-    // Run event loop
-    let result = run_app(&mut terminal, &mut app, ipc_client).await;
+    let result = {
+        let terminal = terminal_session.terminal_mut();
+        std::panic::AssertUnwindSafe(run_app(terminal, &mut app, ipc_client))
+            .catch_unwind()
+            .await
+    };
 
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    terminal_session.restore()?;
 
-    result
+    match result {
+        Ok(result) => result,
+        Err(payload) => Err(anyhow::anyhow!(
+            "wezterm-fs-explorer panicked: {}",
+            panic_payload_message(payload)
+        )),
+    }
 }
 
 async fn run_app<B: ratatui::backend::Backend>(
@@ -271,6 +341,16 @@ async fn run_app<B: ratatui::backend::Backend>(
     }
 }
 
+fn panic_payload_message(payload: Box<dyn Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
 fn run_json_mode(start_dir: &Path) -> Result<Vec<PathBuf>> {
     // For JSON mode, just return the directory
     Ok(vec![start_dir.to_path_buf()])
@@ -288,7 +368,12 @@ fn handle_ipc_message(app: &mut App, msg: ipc_client::IpcMessage) -> Result<()> 
             app.refresh_entries()?;
         }
         ipc_client::IpcMessage::OpenFile { path, line, column } => {
-            log::info!("IPC: Open file {} at {:?}:{:?}", path.display(), line, column);
+            log::info!(
+                "IPC: Open file {} at {:?}:{:?}",
+                path.display(),
+                line,
+                column
+            );
             if let Err(e) = ipc_client::open_file_in_editor(&path, line, column) {
                 app.error_message = Some(format!("Failed to open file: {}", e));
             }

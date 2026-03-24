@@ -86,9 +86,7 @@ fn draw_file_list(f: &mut Frame, app: &App, area: Rect) {
             let mut style = Style::default().fg(color);
 
             if idx == app.selected_index {
-                style = style
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD);
+                style = style.bg(Color::DarkGray).add_modifier(Modifier::BOLD);
             }
 
             ListItem::new(content).style(style)
@@ -125,12 +123,7 @@ fn draw_preview_pane(f: &mut Frame, app: &App, area: Rect) {
                 lines.push(String::new());
                 lines.push("Content Preview:".to_string());
                 lines.push("─".repeat(40));
-                lines.extend(
-                    content
-                        .lines()
-                        .take(20)
-                        .map(|l| l.to_string()),
-                );
+                lines.extend(content.lines().take(20).map(|l| l.to_string()));
             }
         } else if entry.file_type == FileType::Directory {
             if let Ok(entries) = std::fs::read_dir(&entry.path) {
@@ -178,9 +171,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         AppMode::Input(InputMode::Move) => {
             format!("Move to: {}_", app.input_buffer)
         }
-        AppMode::Confirmation(ConfirmationMode::Delete) => {
-            String::from("Delete selected? (y/n)")
-        }
+        AppMode::Confirmation(ConfirmationMode::Delete) => String::from("Delete selected? (y/n)"),
     };
 
     let status = Paragraph::new(status_text)

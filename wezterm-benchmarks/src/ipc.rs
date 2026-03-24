@@ -23,9 +23,25 @@ pub enum SerializationFormat {
     MessagePackLz4,
 }
 
+/// Wrapper around Windows HANDLE that is safe to send between threads.
+/// Named pipe handles are thread-safe when properly synchronized.
+#[cfg(windows)]
+struct SendableHandle(windows::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+// SAFETY: Windows named pipe handles are safe to send between threads
+// when access is synchronized (via Mutex). The handle itself is just
+// a pointer-sized integer identifying a kernel object.
+unsafe impl Send for SendableHandle {}
+
+#[cfg(windows)]
+// SAFETY: Access to the handle is synchronized through Arc<Mutex<...>>,
+// so concurrent access from multiple threads is safe.
+unsafe impl Sync for SendableHandle {}
+
 struct Connection {
     #[cfg(windows)]
-    pipe: Arc<Mutex<windows::Win32::Foundation::HANDLE>>,
+    pipe: Arc<Mutex<SendableHandle>>,
     #[cfg(not(windows))]
     socket: Arc<Mutex<tokio::net::UnixStream>>,
 }
@@ -320,6 +336,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires wezterm-utils-daemon running on named pipe"]
     async fn test_connection_pool() {
         let pool = ConnectionPool::new(5).await;
 
@@ -333,18 +350,21 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires wezterm-utils-daemon running on named pipe"]
     async fn test_message_batching() {
         let client = IpcClient::connect_json().await.unwrap();
         let mut batcher = MessageBatcher::new(client);
 
-        // Send multiple messages
-        let futures: Vec<_> = (0..5)
-            .map(|i| batcher.send("test", i))
-            .collect();
+        // Send multiple messages sequentially (send takes &mut self)
+        let mut receivers = Vec::new();
+        for i in 0..5 {
+            let rx = batcher.send("test", i).await;
+            receivers.push(rx);
+        }
 
         // All should be batched
-        for fut in futures {
-            let _ = fut.await;
+        for rx in receivers {
+            let _ = rx.await;
         }
     }
 }

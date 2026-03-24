@@ -20,7 +20,7 @@ just test              # Run tests with sccache
 just full-verify       # Full quality check (fmt, clippy, test, docs, sccache stats)
 
 # Build all custom utilities (wezterm-fs-explorer, wezterm-watch)
-.\build-all.ps1        # Builds and installs to $env:USERPROFILE\.local\bin
+.\build-all.ps1        # Builds and installs to $env:USERPROFILE\bin
 ```
 
 **Unix/Linux/macOS (Make)**:
@@ -108,13 +108,12 @@ gdb ./target/debug/wezterm
 
 ### Workspace Structure
 
-This is a Cargo workspace with 19+ member crates organized by functionality.
+This is a Cargo workspace with 25 member crates organized by functionality.
 
-**Shared Target Directory** (`.cargo/config.toml`):
-- Windows: `C:\Users\david\.cargo\shared-target\`
-- Binaries: `shared-target\release\*.exe` or `shared-target\debug\*.exe`
-- Benefits: Shared compilation artifacts across builds, reduced disk usage
-- Note: Can be overridden by project-specific `./target/` if config not present
+**Target Directory** (`.cargo/config.toml`):
+- Default: `./target/` (shared target dir is available but commented out in config)
+- To enable shared: uncomment `target-dir = "C:/Users/david/.cargo/shared-target"` in `.cargo/config.toml`
+- `[profile.dev]` uses `incremental = false` — sccache handles caching instead
 
 **Key Configuration**:
 ```toml
@@ -151,10 +150,21 @@ rustflags = ["-C", "target-feature=+crt-static"]  # Static OpenSSL on Windows
 - `wezterm-ssh/` - Native SSH client implementation
 - `filedescriptor/` - Cross-platform file descriptor utilities
 
+**Custom Utilities & Extensions**:
+- `wezterm-module-framework/` - Module framework for AI/plugin integration
+- `wezterm-utils-daemon/` - IPC server daemon for utility coordination
+- `wezterm-benchmarks/` - Performance benchmark suite
+- `wezterm-watch/` - File watcher with git integration (workspace member)
+- `wezterm-fs-explorer/` - Filesystem explorer (standalone, not in workspace)
+
 **Supporting Libraries**:
 - `termwiz/` - Reusable terminal utilities library
 - `promise/` - Async/promise utilities
 - `wezterm-dynamic/` - Dynamic type system for configuration
+- `wezterm-blob-leases/` - Blob lease management
+- `wezterm-uds/` - Unix domain socket abstraction
+- `wezterm-fs-utils/` - Filesystem utility helpers
+- `wezterm-open-url/` - URL opening abstraction
 
 ### Key Design Patterns
 
@@ -232,10 +242,12 @@ The project uses `sccache` for accelerated builds via shared compilation cache:
 **Configuration** (`.cargo/config.toml`):
 ```toml
 [env]
-SCCACHE_SERVER_PORT = "4226"
+SCCACHE_SERVER_PORT = "4400"
 SCCACHE_CACHE_COMPRESSION = "zstd"
 SCCACHE_CACHE_SIZE = "30G"
 SCCACHE_DIR = "T:/RustCache/sccache"
+OPENSSL_DIR = "C:/codedev/vcpkg/installed/x64-windows"
+OPENSSL_NO_VENDOR = "1"
 ```
 
 **Usage**:
@@ -262,168 +274,51 @@ cargo build
 sccache --show-stats
 ```
 
-### Custom WezTerm Utilities
+### Custom Utilities
 
-This repository includes custom Rust utilities:
-
-**wezterm-watch**: File watcher with git integration (workspace member)
-- Location: `wezterm-watch/`
-- Features: Real-time monitoring, git status, multiple output formats
-- Build: `cargo build --release -p wezterm-watch`
-- Docs: See `wezterm-watch/README.md`
-
-**wezterm-fs-explorer**: High-performance filesystem explorer (standalone, not in workspace)
-- Location: `wezterm-fs-explorer/`
-- Features: Vim keybindings, git integration, Nerd Font icons, IPC support
-- Build: `cd wezterm-fs-explorer && cargo build --release`
-- Docs: See `wezterm-fs-explorer/README.md`
-- Note: Has its own `Cargo.lock`; not part of the main workspace
-
-**Build All Utilities** (Windows):
 ```powershell
-.\build-all.ps1                # Builds and installs both utilities
+# Build and install all custom utilities (wezterm-watch + wezterm-fs-explorer)
+.\build-all.ps1                # Installs to $env:USERPROFILE\bin\
 .\build-all.ps1 -Force         # Force rebuild
-.\build-all.ps1 -SkipTests     # Skip verification tests
 ```
 
-Binaries install to: `$env:USERPROFILE\.local\bin\` (added to PATH automatically)
+- **wezterm-fs-explorer**: Standalone (own Cargo.lock), build with `cd wezterm-fs-explorer && cargo build --release`
+- **wezterm-watch**: Workspace member, build with `cargo build --release -p wezterm-watch`
 
-### New Utility Modules (wezterm-fs-explorer)
+## Build Tools
 
-| Module | Description | Key Features |
-|--------|-------------|--------------|
-| `ipc.rs` | Cross-platform IPC | UDS Windows (uds_windows), tokio UnixStream on Unix |
-| `path_utils.rs` | WSL path translation | C:\ ↔ /mnt/c/ conversion, path type detection |
-| `shell.rs` | Shell detection | PowerShell, Git Bash, WSL, CMD auto-detection |
-| `search.rs` | Fuzzy search | nucleo-based file search (Ctrl+F / `/`) |
+### PowerShell Tools (`tools/`)
 
-## Integrated Build Tools Framework
+| Tool | Purpose |
+|------|---------|
+| `Build-Integration.ps1` | Master build tools: `-Install`, `-HealthCheck`, `-Optimize`, `-Release` |
+| `Invoke-Gix.ps1` | gix CLI wrapper: `-Stats`, `-UnreleasedCommits`, `-Changelog`, `-VersionBump` |
+| `CargoTools/` module | Cargo build wrapping with sccache, preflight checks (`Import-Module .\tools\CargoTools\CargoTools.psd1`) |
 
-### PowerShell Build Integration (`tools/`)
+### Justfile Targets
 
-**Build-Integration.ps1** - Master build tools integration (1,280 lines):
-```powershell
-# Install all Rust build tools
-.\tools\Build-Integration.ps1 -Install
+Run `just --list` for all 49+ targets. Key ones:
 
-# Test tool health
-.\tools\Build-Integration.ps1 -HealthCheck
-
-# Optimize build environment
-.\tools\Build-Integration.ps1 -Optimize
-
-# Smart release workflow
-.\tools\Build-Integration.ps1 -Release -DryRun
-```
-
-Key functions:
-- `Install-RustBuildTools` - cargo-binstall, nextest, llvm-cov, git-cliff, cargo-smart-release
-- `Test-BuildToolHealth` - Verify all tools installed and functional
-- `Optimize-BuildEnvironment` - Configure sccache, LTO, incremental builds
-- `Invoke-SmartRelease` - Automated release with changelog generation
-
-**Invoke-Gix.ps1** - gix CLI wrapper (pure Rust Git):
-```powershell
-# Repository statistics
-.\tools\Invoke-Gix.ps1 -Stats
-
-# Unreleased commits since last tag
-.\tools\Invoke-Gix.ps1 -UnreleasedCommits
-
-# Generate changelog
-.\tools\Invoke-Gix.ps1 -Changelog
-
-# Suggest version bump
-.\tools\Invoke-Gix.ps1 -VersionBump
-```
-
-**CargoTools Module** (`tools/CargoTools/`):
-- Cargo build wrapping with sccache integration
-- Preflight checks for build environment
-- Build routing and optimization
-- Import: `Import-Module .\tools\CargoTools\CargoTools.psd1`
-
-### Enhanced Justfile Targets (49 total)
-
-**Quick Development**:
 ```bash
-just quick-check       # Fast check + fmt + clippy
-just dev-cycle         # Full development cycle
-just pre-commit        # Pre-commit validation
-```
-
-**Build Targets**:
-```bash
-just build-parallel    # Parallel workspace build
-just build-diag        # Build with diagnostics
-just rebuild-clean     # Clean rebuild
-just build-utils       # Build custom utilities
-```
-
-**Release & Changelog**:
-```bash
-just release-preview   # Preview release changes
-just release-execute   # Execute release
-just release-with-changelog  # Release + changelog
-just changelog         # Generate changelog only
-```
-
-**Repository Analysis (gix)**:
-```bash
-just repo-stats        # Repository statistics
-just unreleased-commits # Commits since last tag
-just repo-verify       # Verify repository integrity
-```
-
-**Tool Management**:
-```bash
-just bootstrap-tools   # Install all dev tools
-just check-tools       # Verify tool installation
-just install-dev-tools # Install nextest, llvm-cov, git-cliff
-```
-
-**CI/CD**:
-```bash
-just ci-validate       # Full CI validation
-just full-local-ci     # Comprehensive local CI
+just quick-check          # Fast: check + fmt + clippy
+just full-local-ci        # Full: fmt, clippy, nextest, docs, arch docs
+just release-dry-run      # Preview release (cargo-smart-release + git-cliff)
+just bootstrap-tools      # Install all dev tools (nextest, llvm-cov, git-cliff)
+just coverage             # Coverage report via llvm-cov
 ```
 
 ### Release Automation
 
-**cargo-smart-release** (`release.toml`):
-- Automated version bumping
-- Changelog generation via git-cliff
-- Pre-release checks and validation
-- Configured for wezterm-fs-explorer and wezterm-watch
-
-**git-cliff** (`cliff.toml`):
-- Conventional commits parsing
-- Grouped changelog by type (feat, fix, docs, etc.)
-- GitHub release notes format
-
-```powershell
-# Preview release
-just release-dry-run
-
-# Execute patch release
-just release-patch
-
-# Generate changelog
-just changelog
-```
+Configured via `release.toml` (cargo-smart-release) and `cliff.toml` (git-cliff conventional commits).
 
 ## Planned Features & Design Documents
 
 **AI Assistant Module** (`WEZTERM_AI_MODULE_DESIGN.md`):
-- Comprehensive design for integrating local LLM-based AI assistant into WezTerm
-- Module framework architecture with capability-based permissions
-- LLM integration layer (mistral.rs, gemma.cpp)
-- Filesystem and Commander utilities with MCP protocol
-- RAG system integration for context-aware assistance
-- Performance optimizations (<700MB memory with AI active)
+- Design spec for local LLM-based AI assistant integration
+- `wezterm-module-framework/` crate provides the plugin/module infrastructure
 - See full specification: `WEZTERM_AI_MODULE_DESIGN.md`
 
-**Implementation Status**: Design specification complete, implementation pending
+**Implementation Status**: Module framework crate created; AI integration pending
 
 ## Important Development Notes
 
@@ -438,14 +333,14 @@ just changelog
    - **Does NOT work** with clippy (use `just clippy` which removes wrapper)
    - Check cache: `just sccache-stats`
 
-3. **Shared Target Directory**:
-   - Reduces build times and disk usage
-   - Configured in `.cargo/config.toml`
-   - All workspace members share compilation artifacts
-
-4. **Static Linking**:
+3. **Static Linking**:
    - OpenSSL statically linked on Windows (`crt-static` feature)
    - Required for portable binaries
+
+4. **OpenSSL via vcpkg**:
+   - Pre-built OpenSSL from `C:/codedev/vcpkg/installed/x64-windows` (`OPENSSL_NO_VENDOR=1`)
+   - Only needed for mux server TLS and legacy SSH backends
+   - Default SSH uses pure-Rust `russh` (no OpenSSL required)
 
 ### Cross-Platform Development
 
@@ -460,3 +355,30 @@ just changelog
 - Extensive Lua API via 13+ `lua-api-crates/` modules
 - Custom utilities can integrate via Lua callbacks
 - See examples in custom utility README files
+
+## Multi-Agent Coordination
+
+Multiple AI agents may work on this repo concurrently. Use the **Agent Bus** (`http://localhost:8400`) for coordination.
+
+**Protocol**:
+```bash
+# Announce presence
+curl -s -X POST http://localhost:8400/messages -H "Content-Type: application/json" \
+  -d '{"sender":"<agent-id>","recipient":"all","topic":"status","body":"<message>","tags":["repo:wezterm"]}'
+
+# Claim file before editing
+curl -s -X POST http://localhost:8400/channels/arbitrate/<file> \
+  -H "Content-Type: application/json" -d '{"agent":"<id>","reason":"<why>"}'
+
+# Check for messages
+curl -s "http://localhost:8400/messages?agent=<id>&since=10&encoding=toon"
+```
+
+**Rules**:
+- Claim files via `/channels/arbitrate/` before editing shared files
+- Check bus every 2-3 tool calls for coordination messages
+- Use stable agent IDs: `claude`, `claude-docs`, `claude-ux`, `codex`, `gemini`
+- Post completion summary when done; poll for follow-up tasks
+- See [AGENTS.md](./AGENTS.md) for agent-specific coordination guidelines
+- See [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) for shared resource contention protocol (build locks, install serialization, config exclusivity)
+- See [AGENT_COORDINATION.md](./AGENT_COORDINATION.md) for the full cross-agent IPC protocol (bus CLI, channels, presence, TOON encoding)

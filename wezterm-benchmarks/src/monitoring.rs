@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use parking_lot::RwLock;
 use prometheus::{
-    Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec,
+    Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec,
     Encoder, TextEncoder, Opts, Registry,
 };
 use serde::{Serialize, Deserialize};
@@ -31,9 +31,9 @@ impl MetricsCollector {
         let registry = Registry::new();
 
         let ipc_latency = HistogramVec::new(
-            Opts::new("ipc_latency_seconds", "IPC operation latency"),
+            HistogramOpts::new("ipc_latency_seconds", "IPC operation latency"),
             &["operation", "format"],
-        ).unwrap();
+        ).expect("failed to create ipc_latency histogram");
 
         let file_ops = CounterVec::new(
             Opts::new("file_operations_total", "Total file operations"),
@@ -50,21 +50,21 @@ impl MetricsCollector {
             &["component"],
         ).unwrap();
 
-        let startup_time = Histogram::new(
-            Opts::new("startup_time_seconds", "Utility startup time"),
-        ).unwrap();
+        let startup_time = Histogram::with_opts(
+            HistogramOpts::new("startup_time_seconds", "Utility startup time"),
+        ).expect("failed to create startup_time histogram");
 
         let git_cache_hits = Counter::new(
-            Opts::new("git_cache_hits_total", "Git cache hits"),
-        ).unwrap();
+            "git_cache_hits_total", "Git cache hits",
+        ).expect("failed to create git_cache_hits counter");
 
         let git_cache_misses = Counter::new(
-            Opts::new("git_cache_misses_total", "Git cache misses"),
-        ).unwrap();
+            "git_cache_misses_total", "Git cache misses",
+        ).expect("failed to create git_cache_misses counter");
 
         let active_connections = Gauge::new(
-            Opts::new("active_connections", "Number of active IPC connections"),
-        ).unwrap();
+            "active_connections", "Number of active IPC connections",
+        ).expect("failed to create active_connections gauge");
 
         // Register all metrics
         registry.register(Box::new(ipc_latency.clone())).unwrap();
@@ -207,7 +207,7 @@ impl PerfMonitor {
         if let Ok(cpu) = system.cpu_load_aggregate() {
             std::thread::sleep(Duration::from_millis(100));
             if let Ok(cpu) = cpu.done() {
-                m.cpu_usage_percent = (cpu.user + cpu.system) * 100.0;
+                m.cpu_usage_percent = f64::from(cpu.user + cpu.system) * 100.0;
             }
         }
     }
@@ -437,7 +437,7 @@ impl ReportGenerator {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PerformanceReport {
     pub generated_at: SystemTime,
     pub duration: Duration,
@@ -449,6 +449,23 @@ pub struct PerformanceReport {
     pub cpu_usage_avg: f64,
     pub cpu_usage_max: f64,
     pub recommendations: Vec<String>,
+}
+
+impl Default for PerformanceReport {
+    fn default() -> Self {
+        Self {
+            generated_at: SystemTime::now(),
+            duration: Duration::default(),
+            ipc_latency_avg: 0.0,
+            ipc_latency_p50: 0.0,
+            ipc_latency_p99: 0.0,
+            memory_usage_avg: 0.0,
+            memory_usage_max: 0.0,
+            cpu_usage_avg: 0.0,
+            cpu_usage_max: 0.0,
+            recommendations: Vec::new(),
+        }
+    }
 }
 
 fn average(values: &[f64]) -> f64 {

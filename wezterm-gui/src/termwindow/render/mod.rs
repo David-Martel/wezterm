@@ -6,6 +6,7 @@ use crate::quad::{
     TripleLayerQuadAllocatorTrait,
 };
 use crate::shapecache::*;
+use crate::tabbar::TabBarState;
 use crate::termwindow::render::paint::AllowImage;
 use crate::termwindow::{BorrowedShapeCacheKey, RenderState, ShapedInfo, TermWindowNotif};
 use crate::utilsprites::RenderMetrics;
@@ -79,6 +80,22 @@ pub struct LineQuadCacheValue {
     pub layers: HeapQuadAllocator,
     // Only set if the line contains any hyperlinks, so
     // that we can invalidate when it changes
+    pub current_highlight: Option<Arc<Hyperlink>>,
+    pub invalidate_on_hover_change: bool,
+}
+
+pub struct PlainTabBarQuadCache {
+    pub config_generation: usize,
+    pub shape_generation: usize,
+    pub pixel_width: usize,
+    pub cell_width: usize,
+    pub cell_height: usize,
+    pub tab_bar_y: NotNan<f32>,
+    pub window_is_transparent: bool,
+    pub default_bg: LinearRgba,
+    pub tab_bar: TabBarState,
+    pub expires: Option<Instant>,
+    pub layers: HeapQuadAllocator,
     pub current_highlight: Option<Arc<Hyperlink>>,
     pub invalidate_on_hover_change: bool,
 }

@@ -23,15 +23,29 @@ pub use pane::{allocate_fs_explorer_pane, FsExplorerInput, FsExplorerPane};
 use crate::{Capabilities, Module, ModuleContext, ModuleState};
 use async_trait::async_trait;
 use config::lua::get_or_create_sub_module;
-use mux::MuxNotification;
+use mux::pane::PaneId;
+use mux::{Mux, MuxNotification};
 use parking_lot::Mutex;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+/// A queued spawn request for deferred pane creation.
+///
+/// When `spawn` is called at config-time (before the Mux is available),
+/// the request is stored here for later processing once the Mux starts.
+#[derive(Debug, Clone)]
+pub struct QueuedSpawnRequest {
+    /// Directory to open in the explorer pane.
+    pub dir: PathBuf,
+}
 
 /// FsExplorerModule: A module that provides filesystem exploration capabilities
 pub struct FsExplorerModule {
     state: Mutex<ModuleState>,
     start_dir: PathBuf,
+    /// Pending spawn requests queued before the Mux was available.
+    pending_spawns: Arc<Mutex<VecDeque<QueuedSpawnRequest>>>,
 }
 
 /// Returns a platform-appropriate default start directory.
@@ -55,7 +69,43 @@ impl FsExplorerModule {
             start_dir: start_dir.unwrap_or_else(|| {
                 std::env::current_dir().unwrap_or_else(|_| default_start_dir())
             }),
+            pending_spawns: Arc::new(Mutex::new(VecDeque::new())),
         }
+    }
+
+    /// Drain any pending spawn requests queued before the Mux was available.
+    pub fn drain_pending_spawns(&self) -> Vec<QueuedSpawnRequest> {
+        self.pending_spawns.lock().drain(..).collect()
+    }
+
+    /// Attempt to spawn an fs-explorer pane via the Mux.
+    ///
+    /// Returns the new pane's ID on success. If the Mux is not yet available,
+    /// the request is queued and `Ok(None)` is returned.
+    pub fn try_spawn_pane(&self, dir: PathBuf) -> Result<Option<PaneId>, anyhow::Error> {
+        let mux = match Mux::try_get() {
+            Some(m) => m,
+            None => {
+                // Mux not available (config-time): queue for later
+                self.pending_spawns.lock().push_back(QueuedSpawnRequest {
+                    dir,
+                });
+                return Ok(None);
+            }
+        };
+
+        let size = config::configuration().initial_size(0, None);
+        let domain_id = mux.default_domain().domain_id();
+
+        let (_input_rx, pane) =
+            allocate_fs_explorer_pane(domain_id, size, dir, None)?;
+
+        let pane_id = pane.pane_id();
+        mux.add_pane(&pane)?;
+        mux.notify(MuxNotification::PaneAdded(pane_id));
+
+        log::info!("FsExplorerModule: spawned pane {}", pane_id);
+        Ok(Some(pane_id))
     }
 
     /// Create a new filesystem explorer pane
@@ -126,13 +176,14 @@ impl Module for FsExplorerModule {
         // Store the default start directory for use in closures
         let default_dir = self.start_dir.clone();
 
+        // Shared pending-spawns queue so the Lua closure can enqueue requests
+        // when the Mux is not yet available.
+        let pending_spawns = Arc::clone(&self.pending_spawns);
+
         // wezterm.fs_explorer.spawn(options)
         // options: { dir = "/path/to/dir" } (optional)
-        // Returns: pane_id (number) or nil on error
-        //
-        // Note: This function requires access to the Mux which is only available
-        // from the GUI thread context. The function logs the request and returns
-        // the requested path for external handling via MuxNotification.
+        // Returns: pane_id (integer) when Mux is available,
+        //          or (nil, "message") when called at config-time.
         let spawn_dir = default_dir.clone();
         fs_explorer_mod.set(
             "spawn",
@@ -148,13 +199,37 @@ impl Module for FsExplorerModule {
                     dir.display()
                 );
 
-                // The actual pane creation requires Mux access which isn't
-                // available in the Lua context. This would typically be
-                // handled by posting a request to the GUI thread.
-                //
-                // For now, return the path that was requested so calling
-                // code can handle the spawn via wezterm's spawn_tab API.
-                Ok(dir.to_string_lossy().to_string())
+                // Try to get the Mux and create a pane directly.
+                let mux = match Mux::try_get() {
+                    Some(m) => m,
+                    None => {
+                        // Config-time: Mux not yet available. Queue for later.
+                        pending_spawns.lock().push_back(QueuedSpawnRequest {
+                            dir,
+                        });
+                        log::info!(
+                            "Lua: fs_explorer.spawn queued (Mux not available at config-time)"
+                        );
+                        return Ok((mlua::Value::Nil, Some("spawn queued: Mux not available at config-time".to_string())));
+                    }
+                };
+
+                let size = config::configuration().initial_size(0, None);
+                let domain_id = mux.default_domain().domain_id();
+
+                let (_input_rx, pane) = allocate_fs_explorer_pane(domain_id, size, dir, None)
+                    .map_err(|e| {
+                        mlua::Error::RuntimeError(format!("Failed to create pane: {}", e))
+                    })?;
+
+                let pane_id = pane.pane_id();
+                mux.add_pane(&pane).map_err(|e| {
+                    mlua::Error::RuntimeError(format!("Failed to add pane to Mux: {}", e))
+                })?;
+                mux.notify(MuxNotification::PaneAdded(pane_id));
+
+                log::info!("Lua: fs_explorer.spawn created pane {}", pane_id);
+                Ok((mlua::Value::Integer(pane_id as i64), None))
             })?,
         )?;
 

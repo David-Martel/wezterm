@@ -34,6 +34,10 @@ cached = "0.54"  # Caching framework
 lru = "0.12"  # LRU cache
 ahash = "0.8"  # Fast hashing
 mimalloc = { version = "0.1", default-features = false }  # Better memory allocator
+rand = "0.8"  # Random number generation for benchmarks
+toml = "0.8"  # TOML parsing for config benchmarks
+clap = { version = "4.0", features = ["derive"] }  # CLI for bin targets
+warp = "0.3"  # HTTP server for perf-monitor metrics endpoint
 
 # Windows specific
 [target.'cfg(windows)'.dependencies]
@@ -52,15 +56,6 @@ windows = { version = "0.58", features = [
 [dev-dependencies]
 proptest = "1.5"
 rand = "0.8"
-
-[profile.release]
-lto = "fat"
-codegen-units = 1
-opt-level = 3
-debug = true  # Keep debug symbols for profiling
-
-[profile.bench]
-inherits = "release"
 
 [[bench]]
 name = "ipc_latency"

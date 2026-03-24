@@ -1,7 +1,7 @@
 use crate::file_entry::{FileEntry, FileType};
 use crate::git_status::GitStatus;
 use crate::operations::FileOperation;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 use wezterm_fs_explorer::search::FuzzySearch;
 
@@ -185,9 +185,7 @@ impl App {
     pub fn start_rename_mode(&mut self) {
         if !self.entries.is_empty() {
             self.mode = AppMode::Input(InputMode::Rename);
-            self.input_buffer = self.entries[self.selected_index]
-                .name
-                .clone();
+            self.input_buffer = self.entries[self.selected_index].name.clone();
         }
     }
 
@@ -282,7 +280,10 @@ impl App {
     fn rename_selected(&mut self) -> Result<()> {
         if !self.entries.is_empty() && !self.input_buffer.is_empty() {
             let old_path = &self.entries[self.selected_index].path;
-            let new_path = old_path.parent().unwrap().join(&self.input_buffer);
+            let parent = old_path
+                .parent()
+                .with_context(|| format!("Cannot rename root path {}", old_path.display()))?;
+            let new_path = parent.join(&self.input_buffer);
             FileOperation::rename(old_path, &new_path)?;
             self.load_directory()?;
         }
@@ -396,5 +397,51 @@ impl App {
 
         // Reset selection when search results change
         self.selected_index = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::SystemTime;
+
+    #[test]
+    fn rename_selected_without_parent_returns_error() {
+        let root_path = if cfg!(windows) {
+            PathBuf::from(r"C:\")
+        } else {
+            PathBuf::from("/")
+        };
+
+        let mut app = App {
+            current_dir: PathBuf::from("."),
+            entries: vec![FileEntry {
+                path: root_path,
+                name: "root".to_string(),
+                file_type: FileType::Directory,
+                size: 0,
+                modified: SystemTime::now(),
+                permissions: "rw-".to_string(),
+                is_hidden: false,
+            }],
+            selected_index: 0,
+            selected_entries: Vec::new(),
+            mode: AppMode::Input(InputMode::Rename),
+            search_query: String::new(),
+            input_buffer: "renamed".to_string(),
+            show_hidden: false,
+            show_preview: false,
+            git_status: None,
+            scroll_offset: 0,
+            error_message: None,
+            fuzzy_search: FuzzySearch::new(),
+            filtered_entries: Vec::new(),
+        };
+
+        let error = app
+            .rename_selected()
+            .expect_err("rename should fail gracefully for parentless paths");
+
+        assert!(error.to_string().contains("Cannot rename root path"));
     }
 }

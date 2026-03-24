@@ -11,7 +11,6 @@ pub enum WatchEvent {
     Created(PathBuf),
     Modified(PathBuf),
     Deleted(PathBuf),
-    #[allow(dead_code)] // Reserved for future rename detection
     Renamed { from: PathBuf, to: PathBuf },
     Error(String),
 }
@@ -40,7 +39,7 @@ impl WatchEvent {
 pub struct FileWatcher {
     _debouncer: Debouncer<RecommendedWatcher, FileIdMap>,
     receiver: Receiver<WatchEvent>,
-    #[allow(dead_code)] // Used for filtering, stored for potential future use
+    #[expect(dead_code, reason = "stored for potential future use in dynamic filter updates")]
     gitignore: Option<Gitignore>,
     watch_path: PathBuf,
 }

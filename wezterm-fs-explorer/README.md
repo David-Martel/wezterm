@@ -34,7 +34,7 @@ A high-performance, keyboard-driven filesystem explorer designed for seamless in
 ```powershell
 cd C:\Users\david\wezterm\wezterm-fs-explorer
 cargo build --release
-copy target\release\wezterm-fs-explorer.exe C:\Users\david\.local\bin\
+copy target\release\wezterm-fs-explorer.exe C:\Users\david\bin\
 ```
 
 #### Unix/Linux/macOS

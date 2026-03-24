@@ -1,8 +1,11 @@
-use crate::quad::TripleLayerQuadAllocator;
+use super::{same_hyperlink, PlainTabBarQuadCache};
+use crate::quad::{HeapQuadAllocator, TripleLayerQuadAllocator};
 use crate::termwindow::render::RenderScreenLineParams;
 use crate::utilsprites::RenderMetrics;
+use anyhow::Context;
 use config::ConfigHandle;
 use mux::renderable::RenderableDimensions;
+use ordered_float::NotNan;
 use wezterm_term::color::ColorAttribute;
 use window::color::LinearRgba;
 
@@ -51,7 +54,38 @@ impl crate::TermWindow {
                 self.config.text_background_opacity
             });
 
-        self.render_screen_line(
+        let tab_bar_y_key = NotNan::new(tab_bar_y).context("tab_bar_y should not be NaN")?;
+        if let Some(cached) = self.plain_tab_bar_quad_cache.as_ref() {
+            let hover_changed = if cached.invalidate_on_hover_change {
+                !same_hyperlink(
+                    cached.current_highlight.as_ref(),
+                    self.current_highlight.as_ref(),
+                )
+            } else {
+                false
+            };
+            if cached.config_generation == self.config.generation()
+                && cached.shape_generation == self.shape_generation
+                && cached.pixel_width == self.dimensions.pixel_width
+                && cached.cell_width == self.render_metrics.cell_size.width as usize
+                && cached.cell_height == self.render_metrics.cell_size.height as usize
+                && cached.tab_bar_y == tab_bar_y_key
+                && cached.window_is_transparent == window_is_transparent
+                && cached.default_bg == default_bg
+                && cached.tab_bar == self.tab_bar
+                && !hover_changed
+            {
+                metrics::histogram!("plain_tab_bar_quad_cache.hit.rate").record(1.);
+                cached.layers.apply_to(layers)?;
+                self.update_next_frame_time(cached.expires);
+                return Ok(());
+            }
+        }
+        metrics::histogram!("plain_tab_bar_quad_cache.miss.rate").record(1.);
+
+        let mut buf = HeapQuadAllocator::default();
+        let next_due = self.has_animation.borrow_mut().take();
+        let render_result = self.render_screen_line(
             RenderScreenLineParams {
                 top_pixel_y: tab_bar_y,
                 left_pixel_x: 0.,
@@ -94,8 +128,31 @@ impl crate::TermWindow {
                 shape_key: None,
                 password_input: false,
             },
-            layers,
+            &mut TripleLayerQuadAllocator::Heap(&mut buf),
         )?;
+        let expires = self.has_animation.borrow().as_ref().cloned();
+        self.update_next_frame_time(next_due);
+
+        buf.apply_to(layers)?;
+        self.plain_tab_bar_quad_cache.replace(PlainTabBarQuadCache {
+            config_generation: self.config.generation(),
+            shape_generation: self.shape_generation,
+            pixel_width: self.dimensions.pixel_width,
+            cell_width: self.render_metrics.cell_size.width as usize,
+            cell_height: self.render_metrics.cell_size.height as usize,
+            tab_bar_y: tab_bar_y_key,
+            window_is_transparent,
+            default_bg,
+            tab_bar: self.tab_bar.clone(),
+            expires,
+            layers: buf,
+            current_highlight: if render_result.invalidate_on_hover_change {
+                self.current_highlight.clone()
+            } else {
+                None
+            },
+            invalidate_on_hover_change: render_result.invalidate_on_hover_change,
+        });
 
         Ok(())
     }

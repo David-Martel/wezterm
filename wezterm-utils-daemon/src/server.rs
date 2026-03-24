@@ -11,8 +11,6 @@ use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-#[cfg(windows)]
-use windows::Win32::Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE};
 
 /// Named pipe server
 pub struct NamedPipeServer {
@@ -93,7 +91,7 @@ impl NamedPipeServer {
     }
 
     async fn accept_connection(
-        mut server: tokio::net::windows::named_pipe::NamedPipeServer,
+        server: tokio::net::windows::named_pipe::NamedPipeServer,
         connection_manager: Arc<ConnectionManager>,
         router_tx: mpsc::UnboundedSender<(String, JsonRpcMessage)>,
     ) -> Result<()> {
