@@ -55,7 +55,7 @@ pub mod startup;
 // Re-export main types
 pub use context::ModuleContext;
 pub use registry::ModuleRegistry;
-pub use startup::initialize_modules;
+pub use startup::{initialize_modules, register_lua_apis};
 
 use async_trait::async_trait;
 use bitflags::bitflags;
