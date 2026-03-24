@@ -1,0 +1,40 @@
+# Jules Project Configuration
+# Google's asynchronous coding agent for CI/CD reviews and automated tasks
+# See: https://jules.google/docs/
+
+# Project context for Jules sessions
+project:
+  name: wezterm
+  language: rust
+  framework: wgpu, tokio, mlua
+  description: >
+    GPU-accelerated terminal emulator fork with custom Rust modules
+    (fs-explorer, file watcher, IPC daemon, module framework),
+    Lua-based UX (codex_ui), and multi-agent coordination.
+
+# Guidelines Jules should follow when reviewing code
+guidelines:
+  - Follow Microsoft Pragmatic Rust Guidelines (see AGENTS.md)
+  - Use Result for recoverable errors, not unwrap/panic (M-PANIC-IS-STOP)
+  - All public types must implement Debug (M-PUBLIC-DEBUG)
+  - Use #[expect] over #[allow] for lint overrides (M-LINT-OVERRIDE-EXPECT)
+  - Document all unsafe blocks with SAFETY comments (M-UNSAFE)
+  - Avoid static mut (M-AVOID-STATICS)
+  - Design APIs for batched operations (M-THROUGHPUT)
+  - Run ast-grep scan before suggesting changes: sg scan --rule rules/rust/
+
+# Quality gates for PR reviews
+review:
+  checks:
+    - cargo fmt --all --check
+    - cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
+    - sg scan --rule rules/rust/ (P0 rules must pass)
+    - cargo nextest run --workspace --no-fail-fast
+  focus_areas:
+    - wezterm-utils-daemon/src/
+    - wezterm-module-framework/src/
+    - wezterm-watch/src/
+    - wezterm-fs-explorer/src/
+    - wezterm-benchmarks/src/
+    - codex_ui/
+    - wezterm-gui/src/termwindow/

@@ -40,7 +40,7 @@ repos:
         pass_filenames: false
       - id: ast-grep-scan
         name: ast-grep P0 Rust rules (unwrap, panic, static-mut, unsafe)
-        entry: bash -c 'command -v sg >/dev/null && sg scan --rule rules/rust/ $(git diff --cached --name-only --diff-filter=ACM | grep "\.rs$" | tr "\n" " ") 2>/dev/null | grep -c "error:" | { read count; [ "${count:-0}" -gt 0 ] && { echo "ast-grep found $count P0 rule violations"; sg scan --rule rules/rust/ $(git diff --cached --name-only --diff-filter=ACM | grep "\.rs$" | tr "\n" " "); exit 1; } || exit 0; } || echo "sg not installed; skipping"'
+        entry: bash -c 'command -v sg >/dev/null && STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep "\.rs$" | tr "\n" " "); [ -n "$STAGED" ] && { ERRORS=$(sg scan $STAGED 2>&1 | grep -c "error\[" || true); [ "$ERRORS" -gt 0 ] && { echo "ast-grep found $ERRORS P0 rule violations:"; sg scan $STAGED; exit 1; } || exit 0; } || exit 0'
         language: system
         pass_filenames: false
         types: [rust]

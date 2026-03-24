@@ -45,14 +45,21 @@ sccache-stats:
 sccache-zero:
     sccache --zero-stats
 
-full-verify: fmt clippy test check-docs sccache-stats
+lint-ast-grep:
+    & sg scan wezterm-utils-daemon/src/ wezterm-module-framework/src/ wezterm-watch/src/ wezterm-fs-explorer/src/ wezterm-benchmarks/src/
 
-full-local-ci: fmt clippy test-nextest check-docs arch-docs sccache-stats
+lint-ast-grep-all:
+    & sg scan
+
+full-verify: fmt clippy lint-ast-grep test check-docs sccache-stats
+
+full-local-ci: fmt clippy lint-ast-grep test-nextest check-docs arch-docs sccache-stats
     Write-Host "Full local CI complete"
 
 quick-check:
     cargo check --workspace
     cargo fmt --all --check
+    & sg scan wezterm-utils-daemon/src/ wezterm-module-framework/src/ wezterm-watch/src/
     Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue; cargo clippy --workspace -- -D warnings
 
 # Build profiling and analysis
