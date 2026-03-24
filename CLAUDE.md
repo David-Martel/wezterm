@@ -311,14 +311,21 @@ just coverage             # Coverage report via llvm-cov
 
 Configured via `release.toml` (cargo-smart-release) and `cliff.toml` (git-cliff conventional commits).
 
-## Planned Features & Design Documents
+## Planning & Design Documents
 
-**AI Assistant Module** (`WEZTERM_AI_MODULE_DESIGN.md`):
+All plans consolidated under `docs/`:
+- **[TODO.md](./TODO.md)** — Current task tracking and agent ownership
+- **[docs/plans/](./docs/plans/)** — Development plans (joint plan, UX redesign, customization roadmap, test plan)
+- **[docs/specs/](./docs/specs/)** — Approved design specifications (UX redesign 4-phase spec)
+- **[docs/design/](./docs/design/)** — Architecture documents (AI module design)
+- **[JULES.md](./JULES.md)** — Jules (Google) async agent: CI/CD PR review, test generation, parallel exploration
+
+**AI Assistant Module** ([docs/design/WEZTERM_AI_MODULE_DESIGN.md](./docs/design/WEZTERM_AI_MODULE_DESIGN.md)):
 - Design spec for local LLM-based AI assistant integration
 - `wezterm-module-framework/` crate provides the plugin/module infrastructure
-- See full specification: `WEZTERM_AI_MODULE_DESIGN.md`
+- Module framework wired into GUI bootstrap (`wezterm-gui/src/main.rs`)
 
-**Implementation Status**: Module framework crate created; AI integration pending
+**Implementation Status**: Module framework integrated into GUI startup; daemon IPC client ready; AI/LLM integration pending
 
 ## Important Development Notes
 

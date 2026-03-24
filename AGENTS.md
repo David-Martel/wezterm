@@ -322,9 +322,21 @@ The short version for this repo:
 
 ---
 
+## Planning & Task Tracking
+
+- [TODO.md](./TODO.md) — Current task tracking, tier priorities, agent ownership
+- [docs/plans/](./docs/plans/) — Development plans (joint plan, UX redesign, customization, test coverage)
+- [docs/specs/](./docs/specs/) — Approved design specs (UX redesign 4-phase)
+- [docs/design/](./docs/design/) — Architecture documents (AI module)
+- [JULES.md](./JULES.md) — Jules (Google) async agent integration for CI/CD, PR review, test generation
+
+---
+
 ## References
 
 - [Microsoft Rust Guidelines](https://microsoft.github.io/rust-guidelines/)
 - [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
 - [WezTerm Documentation](https://wezfurlong.org/wezterm/)
 - [CLAUDE.md](./CLAUDE.md) - Project-specific Claude Code guidance
+- [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) - Shared resource protocol
+- [AGENT_COORDINATION.md](./AGENT_COORDINATION.md) - Cross-agent IPC protocol
