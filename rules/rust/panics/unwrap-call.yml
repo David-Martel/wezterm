@@ -3,15 +3,35 @@ message: unwrap() will panic on None/Err - use ? operator or explicit error hand
 severity: error
 language: rust
 rule:
-  pattern: $EXPR.unwrap()
+  all:
+    - pattern: $EXPR.unwrap()
+    - not:
+        inside:
+          pattern: |
+            #[cfg(test)]
+            mod $MOD {
+              $$$BODY
+            }
+    - not:
+        inside:
+          pattern: |
+            #[test]
+            fn $FUNC($$$PARAMS) {
+              $$$BODY
+            }
+    - not:
+        inside:
+          pattern: |
+            #[tokio::test]
+            async fn $FUNC($$$PARAMS) {
+              $$$BODY
+            }
 files:
   - "**/src/**/*.rs"
   - "!**/tests/**"
   - "!**/*_test.rs"
   - "!**/test_*.rs"
   - "!**/_backup*/**"
-fix: |-
-  $EXPR?
 note: |
   Example fixes:
   1. Use ? operator: value.some_method()?

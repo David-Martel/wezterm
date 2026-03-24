@@ -52,8 +52,14 @@ jobs:
         run: |
           curl -LsSf https://get.nexte.st/latest/windows | tar zxf - -C ${env:CARGO_HOME}\..\bin
 
+      - name: Install ast-grep
+        run: cargo install ast-grep --locked
+
       - name: Check formatting
         run: cargo fmt --all --check
+
+      - name: Run ast-grep
+        run: sg scan -c sgconfig.yml wezterm-utils-daemon/src wezterm-module-framework/src wezterm-watch/src wezterm-fs-explorer/src wezterm-benchmarks/src
 
       - name: Build workspace
         run: cargo build --workspace --verbose

@@ -1,0 +1,13 @@
+id: dbg-macro-in-production
+language: Rust
+severity: warning
+message: "Remove dbg!() before shipping production Rust code"
+rule:
+  pattern: dbg!($$$ARGS)
+files:
+  - "**/src/**/*.rs"
+  - "!**/tests/**"
+  - "!**/*_test.rs"
+  - "!**/test_*.rs"
+  - "!**/_backup*/**"
+note: "dbg!() is useful during development, but it writes directly to stderr and often survives unintentionally."

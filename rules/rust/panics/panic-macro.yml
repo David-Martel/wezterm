@@ -3,7 +3,29 @@ message: panic!() causes immediate program termination - return error instead
 severity: error
 language: rust
 rule:
-  pattern: panic!($$$ARGS)
+  all:
+    - pattern: panic!($$$ARGS)
+    - not:
+        inside:
+          pattern: |
+            #[cfg(test)]
+            mod $MOD {
+              $$$BODY
+            }
+    - not:
+        inside:
+          pattern: |
+            #[test]
+            fn $FUNC($$$PARAMS) {
+              $$$BODY
+            }
+    - not:
+        inside:
+          pattern: |
+            #[tokio::test]
+            async fn $FUNC($$$PARAMS) {
+              $$$BODY
+            }
 files:
   - "**/src/**/*.rs"
   - "!**/tests/**"

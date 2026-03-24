@@ -5,17 +5,18 @@ set shell := ["powershell", "-NoLogo", "-Command"]
 default: build
 
 build:
+    just quick-check
     $env:RUSTC_WRAPPER="sccache"; cargo build --workspace
 
 release:
+    just quick-check
     $env:RUSTC_WRAPPER="sccache"; cargo build --workspace --release
 
 fmt:
     cargo fmt --all
 
 clippy:
-    # Run clippy without sccache (wrapper causes -vV probe failure in current environment)
-    Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue; cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
 
 clippy-cache:
     # Attempt clippy with sccache (may fail). Use for experimentation.
@@ -25,8 +26,7 @@ test:
     $env:RUSTC_WRAPPER="sccache"; cargo test --workspace --no-fail-fast
 
 test-nextest:
-    # Run tests with nextest if installed; fallback to cargo test
-    if (Get-Command cargo-nextest -ErrorAction SilentlyContinue) { $env:RUSTC_WRAPPER="sccache"; cargo nextest run --workspace } else { Write-Host 'cargo-nextest not installed; using cargo test'; $env:RUSTC_WRAPPER="sccache"; cargo test --workspace --no-fail-fast }
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task nextest
 
 bench:
     cargo bench
@@ -46,10 +46,13 @@ sccache-zero:
     sccache --zero-stats
 
 lint-ast-grep:
-    & sg scan wezterm-utils-daemon/src/ wezterm-module-framework/src/ wezterm-watch/src/ wezterm-fs-explorer/src/ wezterm-benchmarks/src/
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan
 
 lint-ast-grep-all:
-    & sg scan
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan -Paths .
+
+ast-grep-fix-safe:
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode fix-safe
 
 full-verify: fmt clippy lint-ast-grep test check-docs sccache-stats
 
@@ -57,10 +60,10 @@ full-local-ci: fmt clippy lint-ast-grep test-nextest check-docs arch-docs sccach
     Write-Host "Full local CI complete"
 
 quick-check:
-    cargo check --workspace
+    cargo check --workspace --all-targets
     cargo fmt --all --check
-    & sg scan wezterm-utils-daemon/src/ wezterm-module-framework/src/ wezterm-watch/src/
-    Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue; cargo clippy --workspace -- -D warnings
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
 
 # Build profiling and analysis
 build-timings:

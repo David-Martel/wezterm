@@ -1,0 +1,17 @@
+id: remove-redundant-format
+language: Rust
+severity: warning
+message: "Avoid format! without interpolation; convert the literal directly to String"
+rule:
+  pattern: format!($LITERAL)
+constraints:
+  LITERAL:
+    kind: string_literal
+fix: $LITERAL.to_string()
+files:
+  - "**/*.rs"
+  - "!**/tests/**"
+  - "!**/*_test.rs"
+  - "!**/test_*.rs"
+  - "!**/_backup*/**"
+note: "This autofix is intentionally narrow: only a bare string literal is rewritten."

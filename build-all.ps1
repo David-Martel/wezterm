@@ -966,20 +966,25 @@ function Invoke-Build {
         # Step 1: Prerequisites
         Test-Prerequisites
 
-        # Step 1b: ast-grep P0 lint scan (if sg available)
+        # Step 1b: ast-grep lint scan (blocking)
         if (Get-Command sg -ErrorAction SilentlyContinue) {
-            Write-Section "ast-grep P0 Rule Scan"
-            $sgResults = sg scan wezterm-utils-daemon/src/ wezterm-module-framework/src/ wezterm-watch/src/ wezterm-fs-explorer/src/ 2>&1
-            $sgErrors = ($sgResults | Select-String 'error\[').Count
-            if ($sgErrors -gt 0) {
-                Write-Status "ast-grep found $sgErrors P0 violations in custom crates" -Level Warning
-                Write-Status "Run 'sg scan' for details" -Level Info
-            } else {
-                Write-Status "ast-grep P0 rules: all clear" -Level Success
+            Write-Section "ast-grep Rule Scan"
+            & pwsh -NoLogo -NoProfile -File (Join-Path $Script:Config.RootDir 'tools/hooks/Invoke-AstGrep.ps1') -Mode scan
+            if ($LASTEXITCODE -ne 0) {
+                throw "ast-grep reported blocking findings"
             }
+            Write-Status "ast-grep rules: all clear" -Level Success
         } else {
             Write-Status "sg (ast-grep) not installed - skipping lint scan" -Level Warning
         }
+
+        # Step 1c: warnings-as-errors quality gate
+        Write-Section "Rust Warning Gate"
+        & pwsh -NoLogo -NoProfile -File (Join-Path $Script:Config.RootDir 'tools/hooks/Invoke-WorkspaceRustChecks.ps1') -Task clippy
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo clippy warnings gate failed"
+        }
+        Write-Status "Rust warning gate passed" -Level Success
 
         # Step 2: Build Rust binaries
         $builtBinaries = Build-AllRustBinaries

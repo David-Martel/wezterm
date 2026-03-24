@@ -3,7 +3,29 @@ message: todo!() will panic at runtime - implement or return error
 severity: warning
 language: rust
 rule:
-  pattern: todo!($$$ARGS)
+  all:
+    - pattern: todo!($$$ARGS)
+    - not:
+        inside:
+          pattern: |
+            #[cfg(test)]
+            mod $MOD {
+              $$$BODY
+            }
+    - not:
+        inside:
+          pattern: |
+            #[test]
+            fn $FUNC($$$PARAMS) {
+              $$$BODY
+            }
+    - not:
+        inside:
+          pattern: |
+            #[tokio::test]
+            async fn $FUNC($$$PARAMS) {
+              $$$BODY
+            }
 files:
   - "**/src/**/*.rs"
   - "!**/tests/**"

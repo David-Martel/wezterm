@@ -1,8 +1,8 @@
 # ast-grep configuration for WezTerm
 # Rules enforce Microsoft Pragmatic Rust Guidelines across the codebase.
-# Run: sg scan --rule rules/rust/ <files>
-# Run all: sg scan
-# CI: integrated via .pre-commit-config.yaml (pre-commit hook)
+# Preferred scan: sg scan -c sgconfig.yml <files>
+# Safe autofix only: sg scan -c sgconfig.yml --update-all --filter 'prefer-expect-over-allow|remove-redundant-format' <files>
+# CI and local hooks: integrated via .pre-commit-config.yaml, lefthook.yml, and Justfile targets
 
 ruleDirs:
   - ./rules/rust

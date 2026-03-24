@@ -4,5 +4,10 @@ severity: warning
 message: "Avoid println! in libraries and production code - use structured logging"
 rule:
   pattern: println!($$$ARGS)
-fix: tracing::info!($$$ARGS)
+files:
+  - "**/src/**/*.rs"
+  - "!**/tests/**"
+  - "!**/*_test.rs"
+  - "!**/test_*.rs"
+  - "!**/_backup*/**"
 note: "Directly writing to stdout bypasses the application logging framework. Use the macro from the tracing context."

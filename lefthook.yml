@@ -1,0 +1,20 @@
+pre-commit:
+  commands:
+    cargo-fmt:
+      glob: "*.rs"
+      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task fmt
+    ast-grep-scan:
+      glob: "*.rs"
+      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan -Staged
+    cargo-clippy:
+      glob: "*.rs"
+      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
+
+pre-push:
+  commands:
+    ast-grep:
+      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan
+    cargo-clippy-full:
+      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy-all-features
+    test-full:
+      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task test-full

@@ -4,14 +4,17 @@ severity: error
 language: rust
 rule:
   all:
-  - pattern: "unsafe {\n  $$$BODY\n}\n"
-  - inside:
-      any:
-      - pattern: unwrap()
-      - pattern: expect($_)
-      - pattern: panic!($$$)
-      - pattern: unimplemented!($$$)
-      - pattern: todo!($$$)
+    - pattern: |
+        unsafe {
+          $$$BODY
+        }
+    - has:
+        any:
+          - pattern: panic!($$$ARGS)
+          - pattern: todo!($$$ARGS)
+          - pattern: unimplemented!($$$ARGS)
+          - pattern: $EXPR.unwrap()
+          - pattern: $EXPR.expect($MSG)
 note: 'Unsafe blocks should not contain panicking code.
 
   Either handle errors properly or document why panic is safe here.
