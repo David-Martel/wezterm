@@ -55,23 +55,32 @@ cargo nextest run -p <package> <test_name>
 cargo test --all
 ```
 
-### Code Formatting and Linting
+### Code Formatting, Linting, and ast-grep
 
 ```bash
-# Format all code (Windows: use Just)
-just fmt               # PowerShell/Windows
-make fmt               # Unix/Linux/macOS
-cargo fmt --all        # Direct cargo (any platform)
+# Format + lint (Windows: use Just — routes through tools/hooks/ wrappers)
+just fmt               # cargo fmt --all
+just clippy            # clippy via Invoke-WorkspaceRustChecks.ps1
+just lint-ast-grep     # ast-grep scan on custom crates
+just ast-grep-fix-safe # auto-fix safe rules (prefer-expect-over-allow, remove-redundant-format)
+just quick-check       # check + fmt + ast-grep + clippy (runs before every build)
 
-# Check formatting without applying changes
+# ast-grep (Microsoft Rust Guidelines enforcement)
+sg scan                            # Full repo scan via sgconfig.yml
+sg scan wezterm-utils-daemon/src/  # Scan specific crate
+sg scan --update-all               # Apply safe auto-fixes
+
+# Direct cargo (any platform)
 cargo fmt --all --check
-
-# Run clippy (Windows: Just handles sccache wrapper issues)
-just clippy            # Windows (disables RUSTC_WRAPPER automatically)
 cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
-
-# Note: clippy.toml allows clippy::type_complexity warnings
 ```
+
+**ast-grep Rules** (`rules/rust/`): 13 rules enforcing M-PANIC-IS-STOP, M-UNSAFE, M-AVOID-STATICS, M-LINT-OVERRIDE-EXPECT. Pre-commit hook blocks on P0 violations. Safe auto-fix available for `prefer-expect-over-allow` and `remove-redundant-format`.
+
+**Git Hooks** (two systems available):
+- **lefthook** (preferred): `lefthook.yml` — pre-commit (fmt, ast-grep, clippy) + pre-push (full tests)
+- **pre-commit**: `.pre-commit-config.yaml` — same hooks via `pre-commit install`
+- Hook scripts: `tools/hooks/Invoke-AstGrep.ps1`, `tools/hooks/Invoke-WorkspaceRustChecks.ps1`
 
 ### Documentation
 
@@ -297,15 +306,20 @@ sccache --show-stats
 
 ### Justfile Targets
 
-Run `just --list` for all 49+ targets. Key ones:
+Run `just --list` for all 50+ targets. Key ones:
 
 ```bash
-just quick-check          # Fast: check + fmt + clippy
-just full-local-ci        # Full: fmt, clippy, nextest, docs, arch docs
-just release-dry-run      # Preview release (cargo-smart-release + git-cliff)
+just quick-check          # check + fmt + ast-grep + clippy (gating — runs before build/release)
+just full-local-ci        # fmt, clippy, ast-grep, nextest, docs, arch docs
+just full-verify          # fmt, clippy, ast-grep, test, docs, sccache stats
+just lint-ast-grep        # ast-grep scan on custom crates only
+just ast-grep-fix-safe    # auto-fix safe ast-grep rules
+just coverage             # Coverage via llvm-cov (custom crates only)
+just release              # Release build with target-cpu=native SIMD optimizations
 just bootstrap-tools      # Install all dev tools (nextest, llvm-cov, git-cliff)
-just coverage             # Coverage report via llvm-cov
 ```
+
+**Release builds** use `-C target-cpu=native` for SIMD/CPU-native optimizations (set in Justfile and build-all.ps1).
 
 ### Release Automation
 
@@ -326,6 +340,28 @@ All plans consolidated under `docs/`:
 - Module framework wired into GUI bootstrap (`wezterm-gui/src/main.rs`)
 
 **Implementation Status**: Module framework integrated into GUI startup; daemon IPC client ready; AI/LLM integration pending
+
+**Security**: See [SECURITY_AUDIT.md](./SECURITY_AUDIT.md) for Jules-generated audit (6 findings: 1 HIGH, 3 MEDIUM, 2 LOW)
+
+### Jules (Google Async Agent)
+
+Jules runs asynchronous code reviews, test generation, and security audits against the GitHub repo. See [JULES.md](./JULES.md) for full guide.
+
+```bash
+# Review a PR
+jules new --repo David-Martel/wezterm "Review PR #XXXX for Rust quality"
+
+# Generate tests
+jules new "Write integration tests for wezterm-utils-daemon/src/client.rs"
+
+# Pull and apply results
+jules remote pull --session <ID> --apply
+
+# Check session status
+jules remote list --session
+```
+
+**Jules config**: `.jules` in repo root defines project context, guidelines, and quality gates.
 
 ## Important Development Notes
 
@@ -389,14 +425,32 @@ agent-bus-http.exe compact-context --max-tokens 2000 --since-minutes 120
 agent-bus.exe serve --transport stdio
 ```
 
-**Rules**:
-- Claim files via `/channels/arbitrate/` before editing shared files
-- Check bus every 2-3 tool calls for coordination messages
-- Use stable agent IDs: `claude`, `claude-docs`, `claude-ux`, `codex`, `gemini`
-- Post completion summary when done; poll for follow-up tasks
-- Prefer `read-direct` for pairwise coordination and `session-summary` only when `session:<id>` tagging is consistent
-- Avoid broad unfiltered reads during multi-repo work; narrow by direct channel, repo, session, or thread when possible
-- Treat the current PostgreSQL `jsonb` fallback warning in `compact-context` / `read --encoding toon` as degraded read-path behavior, not a hard failure
-- See [AGENTS.md](./AGENTS.md) for agent-specific coordination guidelines
-- See [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) for shared resource contention protocol (build locks, install serialization, config exclusivity)
-- See [AGENT_COORDINATION.md](./AGENT_COORDINATION.md) for the full cross-agent IPC protocol (bus CLI, channels, presence, TOON encoding)
+**Resource Protocol** (from [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md)):
+- **Exclusive resources**: `target/`, `Cargo.lock`, `~/bin/*` installs, `.wezterm.lua`, `~/.config/wezterm/**`, Windows Terminal settings
+- **Before using exclusive**: Post `RESOURCE_START resource=<path> mode=exclusive cmd=<what> eta=<time>`
+- **After done**: Post `RESOURCE_DONE resource=<path> status=ok follow_up=<notes>`
+- **Parallel builds**: Use per-agent `CARGO_TARGET_DIR` (e.g., `C:/Users/david/.cache/claude/<task>`)
+- **sccache**: Shared (concurrent reads OK), but never `--zero-stats` or `--stop-server` without ack
+
+**Do:**
+- `agent-bus-http.exe read-direct --agent-a codex --agent-b claude --limit 20 --encoding toon` before shared edits
+- `agent-bus-http.exe compact-context --max-tokens 2000 --since-minutes 120` before resuming long sessions
+- `agent-bus-http.exe claim <file> --agent claude --reason "<why>"` before editing shared files
+
+**Don't:**
+- `agent-bus-http.exe read --since-minutes 1440` without narrowing (floods context)
+- Use `compact-context` as fully reliable when PostgreSQL `jsonb` warning appears (treat as degraded)
+- Use `agent-bus-http.exe` for MCP stdio (use `agent-bus.exe serve --transport stdio` instead)
+- Edit files under `~/.config/wezterm/` without exclusive lock (triggers reload storm)
+- Run `cargo build` on default `target/` without checking for active locks
+
+**Gotchas**:
+- Writing files inside `~/.config/wezterm/` triggers WezTerm's file watcher → config reload loop. Panel state uses `~/.local/state/wezterm-utils/` instead.
+- `Cargo.lock` is exclusive — concurrent `cargo update` corrupts it.
+- DLLs (conpty.dll, libEGL.dll, libGLESv2.dll) must be alongside wezterm.exe in `~/bin/` for GUI to launch.
+
+**References**:
+- [AGENTS.md](./AGENTS.md) — Agent-specific guidelines, coordination examples, positive/negative patterns
+- [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) — Full shared resource protocol
+- [AGENT_COORDINATION.md](./AGENT_COORDINATION.md) — Cross-agent IPC protocol (bus CLI, channels, presence, TOON encoding)
+- [JULES.md](./JULES.md) — Jules async agent for CI/CD reviews, test generation, security audits
