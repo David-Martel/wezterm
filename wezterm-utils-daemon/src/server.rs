@@ -146,8 +146,10 @@ impl IpcServer {
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
-        // Create message channel for this connection
-        let (tx, _rx) = mpsc::unbounded_channel();
+        // Create message channel for this connection.
+        // tx goes into Connection (for sending responses/events to the client).
+        // rx goes to handle_connection (wired to the writer task).
+        let (tx, rx) = mpsc::unbounded_channel();
         let connection = Connection::new(tx);
         let connection_id = connection.id.clone();
 
@@ -160,8 +162,8 @@ impl IpcServer {
             }
         };
 
-        // Handle the connection
-        let result = handle_connection(stream, connection.clone(), router_tx).await;
+        // Handle the connection — pass rx so the writer task can send responses
+        let result = handle_connection(stream, connection.clone(), router_tx, rx).await;
 
         // Remove connection when done
         connection_manager.remove_connection(&connection_id);

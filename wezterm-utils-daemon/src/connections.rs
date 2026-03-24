@@ -249,24 +249,27 @@ impl ConnectionManager {
     }
 }
 
-/// Handle a single connection (reads messages from pipe/socket)
+/// Handle a single connection (reads messages from pipe/socket).
+///
+/// `outbound_rx` receives messages destined for this connection's client
+/// (e.g., responses, broadcast events). It should be the receiver half
+/// of the channel whose sender is stored in `Connection.tx`.
 pub async fn handle_connection<S>(
     stream: S,
     connection: Arc<Connection>,
     router_tx: mpsc::UnboundedSender<(String, JsonRpcMessage)>,
+    mut outbound_rx: mpsc::UnboundedReceiver<JsonRpcMessage>,
 ) -> Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let (_tx, mut rx) = mpsc::unbounded_channel::<JsonRpcMessage>();
-
     // Split stream into independent read/write halves
     let (read_half, mut write_half) = split(stream);
 
-    // Spawn writer task
+    // Spawn writer task — receives messages from Connection.tx via outbound_rx
     let connection_id = connection.id.clone();
     tokio::spawn(async move {
-        while let Some(message) = rx.recv().await {
+        while let Some(message) = outbound_rx.recv().await {
             if let Ok(json) = message.to_string() {
                 let data = format!("{}\n", json);
                 if let Err(e) = write_half.write_all(data.as_bytes()).await {
