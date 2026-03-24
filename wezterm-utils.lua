@@ -19,7 +19,8 @@ M.config = {
   ipc_socket = '\\\\.\\pipe\\wezterm-utils-ipc',
   ipc_enabled = false,
 
-  state_dir = wezterm.home_dir .. '\\.config\\wezterm\\wezterm-utils-state',
+  -- State dir outside config dir to avoid triggering WezTerm's file watcher reload loop
+  state_dir = wezterm.home_dir .. '\\.local\\state\\wezterm-utils',
   state_enabled = true,
 
   lazy_load = true,

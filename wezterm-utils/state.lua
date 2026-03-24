@@ -16,23 +16,32 @@ function M.init(state_dir)
 
   M.state_dir = state_dir
 
-  local mkdir_cmd
-  if wezterm.target_triple == 'x86_64-pc-windows-msvc' then
-    mkdir_cmd = 'if not exist "' .. state_dir .. '" mkdir "' .. state_dir .. '"'
-  else
-    mkdir_cmd = 'mkdir -p "' .. state_dir .. '"'
-  end
-
-  local result = os.execute(mkdir_cmd)
-
-  if result == 0 or result == true then
+  -- Check if directory exists WITHOUT creating it during config load.
+  -- Creating dirs inside ~/.config/wezterm/ triggers WezTerm's file watcher,
+  -- causing a config reload loop (config load -> mkdir -> watcher fires -> reload).
+  -- Defer directory creation to first write operation instead.
+  local handle = io.open(state_dir .. '/.state_check', 'r')
+  if handle then
+    handle:close()
     M.initialized = true
-    wezterm.log_info('State directory initialized: ' .. state_dir)
     return true
   end
 
-  wezterm.log_error('Failed to create state directory: ' .. state_dir)
-  return false
+  -- Directory might exist but .state_check doesn't — try opening the dir itself
+  -- by checking if a known file or any file exists
+  local dir_handle = io.open(state_dir, 'r')
+  if dir_handle then
+    dir_handle:close()
+    M.initialized = true
+    return true
+  end
+
+  -- Directory doesn't exist yet. Mark as initialized but defer mkdir
+  -- to the first save_state() call to avoid triggering reload loops.
+  M.initialized = true
+  M._needs_mkdir = true
+  wezterm.log_info('State directory will be created on first write: ' .. state_dir)
+  return true
 end
 
 local function get_state_file_path(utility_name)
@@ -84,6 +93,18 @@ function M.save_state(utility_name, state)
   if not M.initialized then
     wezterm.log_warn('State module not initialized')
     return false
+  end
+
+  -- Deferred directory creation (avoids triggering config reload during load)
+  if M._needs_mkdir and M.state_dir then
+    local mkdir_cmd
+    if wezterm.target_triple == 'x86_64-pc-windows-msvc' then
+      mkdir_cmd = 'if not exist "' .. M.state_dir .. '" mkdir "' .. M.state_dir .. '"'
+    else
+      mkdir_cmd = 'mkdir -p "' .. M.state_dir .. '"'
+    end
+    os.execute(mkdir_cmd)
+    M._needs_mkdir = nil
   end
 
   local file_path = get_state_file_path(utility_name)
