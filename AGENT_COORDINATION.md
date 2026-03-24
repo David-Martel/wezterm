@@ -4,44 +4,84 @@
 > **Protocol Version: v0.4 | Implementation: Rust native (no Python)**
 > This is the canonical copy. Mirrors at `~/.claude/`, `~/.codex/`, `~/.gemini/` should sync to this file.
 
-## Quick Start (Rust CLI — v0.4)
+## Quick Start (Preferred Day-To-Day CLI + Backend CLI — v0.4)
 
 ```bash
-# Rust CLI (primary — ~/bin/agent-bus.exe, 100% Rust native, no Python)
-agent-bus health --encoding json              # Check Redis + PostgreSQL
-agent-bus send --from-agent claude --to-agent codex --topic "status" --body "ready"
-agent-bus read --agent claude --since-minutes 60 --encoding human
-agent-bus read --agent claude --since-minutes 60 --encoding toon   # Ultra-compact for LLMs
-agent-bus watch --agent claude --history 10 --encoding human       # Live streaming
-agent-bus watch --agent claude --history 10                        # Compact streaming
-agent-bus ack --agent claude --message-id <id>
-agent-bus presence --agent claude --status online --capability mcp
-agent-bus monitor --session "session:code-review" --refresh 5      # Live dashboard
-agent-bus serve --transport stdio             # MCP server mode (for mcp.json)
-agent-bus serve --transport http --port 8400  # HTTP REST mode
-agent-bus serve --transport mcp-http --port 8401  # MCP Streamable HTTP (2025-06-18 spec)
+# Preferred day-to-day agent CLI (routes through the running HTTP service)
+agent-bus-http.exe send --from-agent claude --to-agent codex --topic "status" --body "ready"
+agent-bus-http.exe read-direct --agent-a claude --agent-b codex --limit 20 --encoding toon
+agent-bus-http.exe read --agent claude --since-minutes 60 --encoding human
+agent-bus-http.exe compact-context --max-tokens 2000 --since-minutes 120
+agent-bus-http.exe session-summary --session "session:code-review" --encoding compact
+agent-bus-http.exe ack --agent claude --message-id <id>
+agent-bus-http.exe presence --agent claude --status online --capability mcp
+agent-bus-http.exe claim src/redis_bus.rs --agent claude --reason "Adding compression"
+
+# Backend/admin CLI (Rust native, no Python)
+agent-bus.exe health --encoding json              # Check Redis + PostgreSQL + runtime metadata
+agent-bus.exe monitor --session "session:code-review" --refresh 5
+agent-bus.exe serve --transport stdio             # MCP server mode (for mcp.json)
+agent-bus.exe serve --transport http --port 8400  # HTTP REST mode
+agent-bus.exe serve --transport mcp-http --port 8401  # MCP Streamable HTTP (2025-06-18 spec)
 
 # File ownership
-agent-bus claim src/redis_bus.rs --agent claude --reason "Adding compression"
-agent-bus claims --resource src/redis_bus.rs
-agent-bus resolve src/redis_bus.rs --winner claude
+agent-bus-http.exe claims --resource src/redis_bus.rs
+agent-bus-http.exe resolve src/redis_bus.rs --winner claude
 
 # Channels
-agent-bus post-direct --from-agent claude --to-agent codex --body "Review done"
-agent-bus read-direct --agent-a claude --agent-b codex
-agent-bus post-group --group "review-http-rs" --from-agent reviewer --body "3 issues"
-agent-bus read-group --group "review-http-rs"
+agent-bus-http.exe post-direct --from-agent claude --to-agent codex --body "Review done"
+agent-bus-http.exe read-direct --agent-a claude --agent-b codex
+agent-bus-http.exe post-group --group "review-http-rs" --from-agent reviewer --body "3 issues"
+agent-bus-http.exe read-group --group "review-http-rs"
 
 # Codex integration
-agent-bus codex-sync --limit 100
+agent-bus-http.exe codex-sync --limit 100
 
 # Full help with env vars, encoding modes, examples, and docs links:
-agent-bus --help
-agent-bus send --help
+agent-bus-http.exe --help
+agent-bus-http.exe send --help
+agent-bus.exe --help
 
 # PowerShell wrappers (audio notifications, table formatting)
 pwsh -NoLogo -NoProfile -File ~/.codex/tools/agent-bus-mcp/scripts/watch-agent-bus.ps1 -Agent claude -Notify
 ```
+
+## Binary Selection And Best Use Cases
+
+### Prefer `agent-bus-http.exe` when:
+
+- the local HTTP service is already running and you want low-latency send/read loops
+- you are coordinating directly with another agent via `post-direct` / `read-direct`
+- you want token-efficient reads via `--encoding toon`, `compact-context`, or `session-summary`
+- you are doing normal claims, ACKs, or group-thread coordination from an agent session
+
+### Prefer `agent-bus.exe` when:
+
+- you need to start or debug the bus service (`serve --transport ...`)
+- you need MCP stdio transport for tool integration
+- you are debugging backend storage/health behavior rather than normal agent coordination
+
+### Positive Examples
+
+- Good: `agent-bus-http.exe read-direct --agent-a codex --agent-b claude --limit 20 --encoding toon` before shared repo edits.
+- Good: `agent-bus-http.exe compact-context --max-tokens 2000 --since-minutes 120` before resuming a long planning thread.
+- Good: `agent-bus.exe serve --transport stdio` when wiring MCP configs.
+- Good: `curl.exe -s http://localhost:8400/health` before depending on the HTTP path for a long coordination wave.
+- Good: `agent-bus-http.exe post-direct --from-agent codex --to-agent claude --topic ping --body "ack when seen"` for fast delivery checks.
+
+### Negative Examples
+
+- Avoid `agent-bus-http.exe read --agent codex --since-minutes 1440` with no repo/session/thread narrowing during multi-repo work.
+- Avoid treating `compact-context` as fully healthy if it emits the current PostgreSQL `jsonb` fallback warning; treat the result as degraded and narrow the read scope manually.
+- Avoid documenting `agent-bus-http.exe` as the MCP stdio entrypoint; that remains `agent-bus.exe serve --transport stdio`.
+- Avoid `watch --encoding toon` for PowerShell-based live notification probes when exact glyph fidelity matters; the direct/read path is fine, but live TOON watch output can show arrow-character artifacts in some shells.
+
+## Notification Path Recommendations
+
+- For pairwise planning, reviews, and handoff ACKs, prefer `post-direct` + `read-direct` over broad `send` + `read`.
+- Before relying on HTTP notifications during a long session, verify the service with `curl.exe -s http://localhost:8400/health`.
+- For quick notification/SSE smoke tests, use a short-lived watcher with `--history 1` and `--encoding compact` or `json`; this is easier to parse reliably than live TOON output in PowerShell.
+- Treat `watch` as a notification probe and dashboard aid, not the canonical source of record; use `read-direct`, `read-group`, or scoped `read` to confirm exact message contents.
 
 ## Architecture (v0.4)
 

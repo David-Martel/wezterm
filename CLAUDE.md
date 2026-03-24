@@ -367,18 +367,26 @@ All plans consolidated under `docs/`:
 
 Multiple AI agents may work on this repo concurrently. Use the **Agent Bus** (`http://localhost:8400`) for coordination.
 
+**Preferred agent binary**: `~/bin/agent-bus-http.exe` for normal send/read/direct-channel work against the running HTTP service.
+**Backend/admin binary**: `~/bin/agent-bus.exe` for MCP stdio, service startup, and backend debugging.
+
 **Protocol**:
 ```bash
 # Announce presence
-curl -s -X POST http://localhost:8400/messages -H "Content-Type: application/json" \
-  -d '{"sender":"<agent-id>","recipient":"all","topic":"status","body":"<message>","tags":["repo:wezterm"]}'
+agent-bus-http.exe send --from-agent <agent-id> --to-agent all --topic status \
+  --body "<message>" --tag "repo:wezterm"
 
 # Claim file before editing
-curl -s -X POST http://localhost:8400/channels/arbitrate/<file> \
-  -H "Content-Type: application/json" -d '{"agent":"<id>","reason":"<why>"}'
+agent-bus-http.exe claim <file> --agent <id> --reason "<why>"
 
-# Check for messages
-curl -s "http://localhost:8400/messages?agent=<id>&since=10&encoding=toon"
+# Pairwise planning/review
+agent-bus-http.exe read-direct --agent-a <id> --agent-b codex --limit 20 --encoding toon
+
+# Compact recent context before resuming
+agent-bus-http.exe compact-context --max-tokens 2000 --since-minutes 120
+
+# Use backend binary for MCP stdio
+agent-bus.exe serve --transport stdio
 ```
 
 **Rules**:
@@ -386,6 +394,9 @@ curl -s "http://localhost:8400/messages?agent=<id>&since=10&encoding=toon"
 - Check bus every 2-3 tool calls for coordination messages
 - Use stable agent IDs: `claude`, `claude-docs`, `claude-ux`, `codex`, `gemini`
 - Post completion summary when done; poll for follow-up tasks
+- Prefer `read-direct` for pairwise coordination and `session-summary` only when `session:<id>` tagging is consistent
+- Avoid broad unfiltered reads during multi-repo work; narrow by direct channel, repo, session, or thread when possible
+- Treat the current PostgreSQL `jsonb` fallback warning in `compact-context` / `read --encoding toon` as degraded read-path behavior, not a hard failure
 - See [AGENTS.md](./AGENTS.md) for agent-specific coordination guidelines
 - See [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) for shared resource contention protocol (build locks, install serialization, config exclusivity)
 - See [AGENT_COORDINATION.md](./AGENT_COORDINATION.md) for the full cross-agent IPC protocol (bus CLI, channels, presence, TOON encoding)

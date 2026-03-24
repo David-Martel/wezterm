@@ -14,7 +14,7 @@ mod server;
 use clap::{Parser, Subcommand};
 use config::Config;
 use error::Result;
-use server::NamedPipeServer;
+use server::IpcServer;
 use std::path::PathBuf;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -139,7 +139,7 @@ async fn start_daemon(
     info!("  Timeout: {}s", config.timeout_seconds);
 
     // Create and start server
-    let server = NamedPipeServer::new(
+    let server = IpcServer::new(
         config.pipe_name.clone(),
         config.max_connections,
         VERSION.to_string(),
@@ -211,40 +211,32 @@ async fn validate_config(config_path: Option<PathBuf>) -> Result<()> {
 async fn show_status() -> Result<()> {
     info!("Requesting daemon status...");
 
-    #[cfg(windows)]
-    {
-        use crate::protocol::{JsonRpcRequest, RequestId};
-        use server::connect_client;
-        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use crate::protocol::{JsonRpcRequest, RequestId};
+    use server::connect_client;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-        // Connect to daemon
-        let config = Config::default();
-        let mut client = connect_client(&config.pipe_name).await?;
+    // Connect to daemon
+    let config = Config::default();
+    let mut client = connect_client(&config.pipe_name).await?;
 
-        // Send status request
-        let request = JsonRpcRequest::new(
-            "daemon/status",
-            None,
-            Some(RequestId::Number(1)),
-        );
+    // Send status request
+    let request = JsonRpcRequest::new(
+        "daemon/status",
+        None,
+        Some(RequestId::Number(1)),
+    );
 
-        let json = serde_json::to_string(&request)?;
-        client.write_all(format!("{}\n", json).as_bytes()).await?;
-        client.flush().await?;
+    let json = serde_json::to_string(&request)?;
+    client.write_all(format!("{}\n", json).as_bytes()).await?;
+    client.flush().await?;
 
-        // Read response
-        let mut reader = BufReader::new(client);
-        let mut line = String::new();
-        reader.read_line(&mut line).await?;
+    // Read response
+    let mut reader = BufReader::new(client);
+    let mut line = String::new();
+    reader.read_line(&mut line).await?;
 
-        let response: serde_json::Value = serde_json::from_str(&line)?;
-        println!("{}", serde_json::to_string_pretty(&response)?);
-    }
-
-    #[cfg(not(windows))]
-    {
-        println!("Status command is only available on Windows");
-    }
+    let response: serde_json::Value = serde_json::from_str(&line)?;
+    println!("{}", serde_json::to_string_pretty(&response)?);
 
     Ok(())
 }

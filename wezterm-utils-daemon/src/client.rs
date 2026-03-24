@@ -20,6 +20,7 @@ use crate::error::{DaemonError, Result};
 use crate::protocol::{JsonRpcMessage, JsonRpcRequest, JsonRpcResponse, RequestId};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 use tracing::{debug, warn};
@@ -27,6 +28,10 @@ use tracing::{debug, warn};
 /// Default pipe name for the daemon on Windows.
 #[cfg(windows)]
 pub const DEFAULT_PIPE_NAME: &str = r"\\.\pipe\wezterm-utils-daemon";
+
+/// Default socket path for the daemon on Unix.
+#[cfg(unix)]
+pub const DEFAULT_SOCKET_PATH: &str = "/tmp/wezterm-utils-daemon.sock";
 
 /// Monotonically increasing request ID generator.
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -45,35 +50,65 @@ pub struct DaemonClient {
     writer: Mutex<tokio::io::WriteHalf<tokio::net::windows::named_pipe::NamedPipeClient>>,
     #[cfg(windows)]
     reader: Mutex<BufReader<tokio::io::ReadHalf<tokio::net::windows::named_pipe::NamedPipeClient>>>,
+
+    #[cfg(unix)]
+    writer: Mutex<tokio::io::WriteHalf<tokio::net::UnixStream>>,
+    #[cfg(unix)]
+    reader: Mutex<BufReader<tokio::io::ReadHalf<tokio::net::UnixStream>>>,
+
     /// The name this client registered with, if any.
     registered_name: Mutex<Option<String>>,
 }
 
 impl DaemonClient {
-    /// Connect to the daemon using the default pipe name.
-    #[cfg(windows)]
+    /// Connect to the daemon using the default pipe name or socket path.
     pub async fn connect() -> Result<Self> {
-        Self::connect_to(DEFAULT_PIPE_NAME).await
+        #[cfg(windows)]
+        {
+            Self::connect_to(DEFAULT_PIPE_NAME).await
+        }
+        #[cfg(unix)]
+        {
+            Self::connect_to(DEFAULT_SOCKET_PATH).await
+        }
     }
 
-    /// Connect to the daemon at a specific pipe path.
-    #[cfg(windows)]
-    pub async fn connect_to(pipe_name: &str) -> Result<Self> {
-        use tokio::net::windows::named_pipe::ClientOptions;
+    /// Connect to the daemon at a specific pipe path or socket path.
+    pub async fn connect_to(path: &str) -> Result<Self> {
+        #[cfg(windows)]
+        {
+            use tokio::net::windows::named_pipe::ClientOptions;
 
-        let client = ClientOptions::new()
-            .open(pipe_name)
-            .map_err(|e| DaemonError::Connection(format!("Failed to connect to {}: {}", pipe_name, e)))?;
+            let client = ClientOptions::new()
+                .open(path)
+                .map_err(|e| DaemonError::Connection(format!("Failed to connect to {}: {}", path, e)))?;
 
-        let (read_half, write_half) = tokio::io::split(client);
+            let (read_half, write_half) = tokio::io::split(client);
 
-        debug!(pipe = %pipe_name, "Connected to daemon");
+            debug!(pipe = %path, "Connected to daemon");
 
-        Ok(Self {
-            writer: Mutex::new(write_half),
-            reader: Mutex::new(BufReader::new(read_half)),
-            registered_name: Mutex::new(None),
-        })
+            Ok(Self {
+                writer: Mutex::new(write_half),
+                reader: Mutex::new(BufReader::new(read_half)),
+                registered_name: Mutex::new(None),
+            })
+        }
+        #[cfg(unix)]
+        {
+            let stream = tokio::net::UnixStream::connect(path)
+                .await
+                .map_err(|e| DaemonError::Connection(format!("Failed to connect to {}: {}", path, e)))?;
+
+            let (read_half, write_half) = tokio::io::split(stream);
+
+            debug!(socket = %path, "Connected to daemon");
+
+            Ok(Self {
+                writer: Mutex::new(write_half),
+                reader: Mutex::new(BufReader::new(read_half)),
+                registered_name: Mutex::new(None),
+            })
+        }
     }
 
     /// Send a JSON-RPC request and wait for the response.
@@ -94,13 +129,17 @@ impl DaemonClient {
                 .map_err(|e| DaemonError::Connection(format!("Flush failed: {}", e)))?;
         }
 
-        // Read response
+        // Read response with timeout
         let mut line = String::new();
-        {
+        let read_future = async {
             let mut reader = self.reader.lock().await;
             reader.read_line(&mut line).await
-                .map_err(|e| DaemonError::Connection(format!("Read failed: {}", e)))?;
-        }
+                .map_err(|e| DaemonError::Connection(format!("Read failed: {}", e)))
+        };
+
+        tokio::time::timeout(Duration::from_secs(5), read_future)
+            .await
+            .map_err(|_| DaemonError::Timeout(format!("Request '{}' timed out after 5s", method)))??;
 
         let response: JsonRpcResponse = serde_json::from_str(line.trim())
             .map_err(|e| DaemonError::Protocol(format!("Parse response failed: {}", e)))?;
@@ -204,7 +243,6 @@ impl DaemonClient {
 ///
 /// This is the recommended entry point — it won't block or error
 /// if the daemon isn't running.
-#[cfg(windows)]
 pub async fn try_connect() -> Option<DaemonClient> {
     match DaemonClient::connect().await {
         Ok(client) => {

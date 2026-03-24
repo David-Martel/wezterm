@@ -8,10 +8,14 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{split, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+#[cfg(windows)]
 use tokio::net::windows::named_pipe::NamedPipeServer;
+
+/// Trait to allow abstraction over different stream types
+pub trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> Stream for T {}
 use tokio::sync::mpsc;
-use tokio::io::split;
 use tokio::time;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -245,16 +249,19 @@ impl ConnectionManager {
     }
 }
 
-/// Handle a single connection (reads messages from pipe)
-pub async fn handle_connection(
-    pipe: NamedPipeServer,
+/// Handle a single connection (reads messages from pipe/socket)
+pub async fn handle_connection<S>(
+    stream: S,
     connection: Arc<Connection>,
     router_tx: mpsc::UnboundedSender<(String, JsonRpcMessage)>,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let (_tx, mut rx) = mpsc::unbounded_channel::<JsonRpcMessage>();
 
-    // Split pipe into independent read/write halves
-    let (read_half, mut write_half) = split(pipe);
+    // Split stream into independent read/write halves
+    let (read_half, mut write_half) = split(stream);
 
     // Spawn writer task
     let connection_id = connection.id.clone();
@@ -266,7 +273,7 @@ pub async fn handle_connection(
                     error!(
                         connection_id = %connection_id,
                         error = %e,
-                        "Failed to write to pipe"
+                        "Failed to write to stream"
                     );
                     break;
                 }
@@ -274,7 +281,7 @@ pub async fn handle_connection(
                     error!(
                         connection_id = %connection_id,
                         error = %e,
-                        "Failed to flush pipe"
+                        "Failed to flush stream"
                     );
                     break;
                 }

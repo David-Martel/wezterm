@@ -265,6 +265,9 @@ make fmt                # Format code
 
 Multiple AI agents may work on this repo concurrently. The **Agent Bus** at `http://localhost:8400` provides coordination.
 
+**Preferred agent binary**: `~/bin/agent-bus-http.exe` for normal send/read loops, direct channel coordination, `compact-context`, and `session-summary` against the running HTTP service.
+**Backend/admin binary**: `~/bin/agent-bus.exe` for MCP stdio, server startup, and backend debugging.
+
 ### Required Protocol
 
 1. **Set presence** on session start with your agent ID and capabilities
@@ -285,21 +288,34 @@ Multiple AI agents may work on this repo concurrently. The **Agent Bus** at `htt
 ### Coordination Examples
 
 ```bash
-# Announce presence
-curl -s -X POST http://localhost:8400/messages -H "Content-Type: application/json" \
-  -d '{"sender":"<agent-id>","recipient":"all","topic":"status","body":"ONLINE: working on <task>","tags":["repo:wezterm"]}'
+# Announce presence / planning via the service-facing binary
+agent-bus-http.exe send --from-agent <agent-id> --to-agent all --topic status \
+  --body "ONLINE: working on <task>" --tag "repo:wezterm"
 
 # Claim a file before editing
-curl -s -X POST http://localhost:8400/channels/arbitrate/wezterm-gui/src/main.rs \
-  -H "Content-Type: application/json" -d '{"agent":"<id>","reason":"fixing render bug"}'
+agent-bus-http.exe claim wezterm-gui/src/main.rs --agent <id> --reason "fixing render bug"
 
-# Check for messages (TOON encoding saves 70% tokens)
-curl -s "http://localhost:8400/messages?agent=<id>&since=10&encoding=toon"
+# Read direct messages with TOON encoding before shared edits
+agent-bus-http.exe read-direct --agent-a codex --agent-b claude --limit 20 --encoding toon
 
-# Direct message another agent
-curl -s -X POST http://localhost:8400/channels/direct/<target-agent> \
-  -H "Content-Type: application/json" -d '{"body":"Need API review","from":"<id>"}'
+# Compact recent context before resuming a long wave
+agent-bus-http.exe compact-context --max-tokens 2500 --since-minutes 120
+
+# Server/MCP work still uses the backend binary
+agent-bus.exe serve --transport stdio
 ```
+
+### Positive Examples
+
+- Good: `agent-bus-http.exe read-direct --agent-a codex --agent-b claude --limit 20 --encoding toon` before claiming a shared WezTerm file.
+- Good: `agent-bus-http.exe session-summary --session session:wezterm-wave --encoding compact` at the end of a wave that consistently tagged `session:<id>`.
+- Good: `agent-bus-http.exe send --from-agent codex --to-agent claude --topic planning --body "Taking Tier 5 validation" --tag "repo:wezterm"`.
+
+### Negative Examples
+
+- Avoid broad `agent-bus-http.exe read --agent codex --since-minutes 1440` calls during multi-repo work; narrow by direct channel, repo, session, or thread when possible.
+- Avoid treating `compact-context` as fully healthy if it emits the known PostgreSQL `jsonb` fallback warning; coordination still works, but the read path is degraded and should be treated as advisory.
+- Avoid using `agent-bus-http.exe` as the documented MCP stdio entrypoint; keep `agent-bus.exe serve --transport stdio` for that path.
 
 ### Rules
 
@@ -307,8 +323,10 @@ curl -s -X POST http://localhost:8400/channels/direct/<target-agent> \
 - Use `thread_id` to group related messages
 - Keep messages short: current state, exact ask, expected output, relevant path
 - Never send secrets or credentials through the bus
-- See `~/.codex/docs/AGENT_BUS.md` for full protocol reference
+- Prefer `read-direct` for pairwise planning/review and `compact-context` before long resumes
+- See `~/.codex/docs/AGENT_BUS.md` for command selection and `agent-bus-http.exe` guidance
 - See [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) for the repo-specific resource contention protocol
+- See `C:/codedev/agent-bus/AGENT_COMMUNICATIONS.md` for the canonical protocol spec
 
 ### Resource Contention Protocol
 

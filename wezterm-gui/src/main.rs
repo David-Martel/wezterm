@@ -410,7 +410,11 @@ async fn async_run_terminal_gui(
     should_publish: bool,
 ) -> anyhow::Result<()> {
     let unix_socket_path =
-        config::RUNTIME_DIR.join(format!("gui-sock-{}", unsafe { libc::getpid() }));
+        config::RUNTIME_DIR.join(format!("gui-sock-{}", unsafe {
+            // SAFETY: libc::getpid() is a standard system call that always
+            // succeeds and has no safety preconditions in this context.
+            libc::getpid()
+        }));
     std::env::set_var("WEZTERM_UNIX_SOCKET", unix_socket_path.clone());
     wezterm_blob_leases::register_storage(Arc::new(
         wezterm_blob_leases::simple_tempdir::SimpleTempDir::new_in(&*config::CACHE_DIR)?,
@@ -1176,6 +1180,9 @@ fn run() -> anyhow::Result<()> {
     #[cfg(windows)]
     {
         unsafe {
+            // SAFETY: SetCurrentProcessExplicitAppUserModelID is used to set
+            // the AppID for shell notifications and taskbar grouping.
+            // The string is a constant and the call is made during early startup.
             ::windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(
                 ::windows::core::PCWSTR(wide_string("org.wezfurlong.wezterm").as_ptr()),
             )
@@ -1198,6 +1205,9 @@ fn run() -> anyhow::Result<()> {
     // input but didn't know to re-draw the prompt.
     #[cfg(windows)]
     unsafe {
+        // SAFETY: AttachConsole is used to attach to the parent process's
+        // console for logging output. It is called if the user explicitly
+        // requests it via the --attach-parent-console flag.
         if opts.attach_parent_console {
             winapi::um::wincon::AttachConsole(winapi::um::wincon::ATTACH_PARENT_PROCESS);
         }
@@ -1210,6 +1220,9 @@ fn run() -> anyhow::Result<()> {
     config::lua::add_context_setup_func(window_funcs::register);
     config::lua::add_context_setup_func(crate::scripting::register);
     config::lua::add_context_setup_func(crate::stats::register);
+    config::lua::add_context_setup_func(|lua| {
+        wezterm_module_framework::register_lua_apis(lua)
+    });
 
     stats::Stats::init()?;
     let _saver = umask::UmaskSaver::new();
