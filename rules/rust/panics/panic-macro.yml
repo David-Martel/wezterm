@@ -3,35 +3,22 @@ message: panic!() causes immediate program termination - return error instead
 severity: error
 language: rust
 rule:
-  all:
-    - pattern: panic!($$$ARGS)
-    - not:
-        inside:
-          pattern: |
-            #[cfg(test)]
-            mod $MOD {
-              $$$BODY
-            }
-    - not:
-        inside:
-          pattern: |
-            #[test]
-            fn $FUNC($$$PARAMS) {
-              $$$BODY
-            }
-    - not:
-        inside:
-          pattern: |
-            #[tokio::test]
-            async fn $FUNC($$$PARAMS) {
-              $$$BODY
-            }
+  pattern: panic!($$$ARGS)
+  not:
+    inside:
+      kind: function_item
+      has:
+        kind: attribute_item
+        regex: "test"
 files:
   - "**/src/**/*.rs"
   - "!**/tests/**"
   - "!**/*_test.rs"
   - "!**/test_*.rs"
   - "!**/_backup*/**"
+  - "!**/benches/**"
 note: |
-  panic!() should only be used for truly unrecoverable errors.
-  Most cases should return Result<T, Error> instead.
+  panic!() terminates the program. Use Result for recoverable errors:
+  - anyhow::bail!("reason") for application code
+  - return Err(MyError::...) for library code
+  - Only acceptable in tests (#[test] functions)
