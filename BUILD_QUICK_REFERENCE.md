@@ -10,6 +10,10 @@
 # Fast debug build (skip tests)
 .\build-all.ps1 -BuildProfile debug -SkipTests
 
+# Launch the bundled GUI without the CLI attach-to-console path
+.\build-all.ps1
+wezterm-launch
+
 # Build with acceleration
 .\build-all.ps1 -Sccache on -Lld on
 ```
@@ -79,7 +83,9 @@ ls artifacts/
 
 | Item | Location |
 |------|----------|
-| Binaries | `~\bin\` (or custom `-InstallPath`) |
+| Launchers | `~\bin\wezterm-launch.cmd`, `~\bin\wezterm-launch.ps1`, `~\bin\wezterm-cli.cmd` |
+| Bundled app | `~\bin\wezterm-app\` (or custom `-InstallPath\wezterm-app\`) |
+| Utility binaries | `~\bin\` (or custom `-InstallPath`) |
 | Release packages | `artifacts/` |
 | Lua modules | `~\.config\wezterm\` |
 | WezTerm config | `~\.wezterm.lua` |
@@ -90,6 +96,9 @@ ls artifacts/
 ```powershell
 # Test enhancements
 .\test-build-enhancements.ps1
+
+# Verify bundled launch path
+.\install-verification.ps1 -Detailed
 
 # View help
 Get-Help .\build-all.ps1 -Full

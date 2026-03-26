@@ -311,12 +311,10 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
         window:toast_notification('WezTerm', 'Editor error: ' .. tostring(err), nil, 3000)
       end
     end)
-    wezterm.on('window-config-reloaded', function(window, pane)
-      local ok, err = pcall(api.restore, window, pane)
-      if not ok then
-        window:toast_notification('WezTerm', 'Panel restore error: ' .. tostring(err), nil, 3000)
-      end
-    end)
+    -- NOTE: window-config-reloaded handler removed — registering it causes
+    -- a cairo stack overflow crash on Windows during the first render frame.
+    -- Panel restore is now triggered only via explicit user action (Alt+1/2/3)
+    -- or can be wired to gui-startup if persistence is needed.
   end
 
   return api

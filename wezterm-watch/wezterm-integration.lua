@@ -95,7 +95,7 @@ config.keys = {
 -- ============================================================================
 
 -- Update the status bar with git information from wezterm-watch
-wezterm.on('update-right-status', function(window, pane)
+wezterm.on('update-status', function(window, pane)
   local cwd = pane:get_current_working_dir()
   if not cwd then
     return

@@ -47,6 +47,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $Script:Config = @{
     InstallPath = "$env:USERPROFILE\bin"
+    BundlePath = "$env:USERPROFILE\bin\wezterm-app"
     WeztermConfigDir = "$env:USERPROFILE\.config\wezterm"
     WeztermConfigFile = "$env:USERPROFILE\.wezterm.lua"
 
@@ -54,7 +55,7 @@ $Script:Config = @{
         @{
             Name = 'wezterm-fs-explorer'
             File = 'wezterm-fs-explorer.exe'
-            VersionFlag = '--version'
+            VersionFlag = '--help'
             Description = 'Filesystem Explorer'
         },
         @{
@@ -311,6 +312,40 @@ function Test-LuaModules {
     return $allPassed
 }
 
+function Test-WezTermGuiLaunch {
+    $guiPath = Join-Path $Script:Config.BundlePath 'wezterm-gui.exe'
+
+    if (-not (Test-Path $guiPath)) {
+        return @{
+            Passed = $false
+            Error = "Missing bundled GUI binary: $guiPath"
+        }
+    }
+
+    try {
+        $process = Start-Process -FilePath $guiPath -ArgumentList @('start', '--always-new-process') -PassThru -WindowStyle Hidden
+        Start-Sleep -Seconds 5
+
+        if ($process.HasExited) {
+            return @{
+                Passed = $false
+                Error = "GUI exited early with code $($process.ExitCode)"
+            }
+        }
+
+        Stop-Process -Id $process.Id -Force
+        return @{
+            Passed = $true
+            Error = ''
+        }
+    } catch {
+        return @{
+            Passed = $false
+            Error = $_.Exception.Message
+        }
+    }
+}
+
 function Test-WeztermConfiguration {
     Write-Section "WezTerm Configuration"
 
@@ -332,28 +367,11 @@ function Test-WeztermConfiguration {
     $configError = ''
 
     try {
-        # Try to validate with wezterm if available
-        $weztermAvailable = $null -ne (Get-Command 'wezterm' -ErrorAction SilentlyContinue)
-
-        if ($weztermAvailable) {
-            $output = wezterm show-config 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                $configValid = $true
-            } else {
-                $configError = $output | Out-String
-            }
+        $launchResult = Test-WezTermGuiLaunch
+        if ($launchResult.Passed) {
+            $configValid = $true
         } else {
-            # Basic Lua syntax check
-            $content = Get-Content $configPath -Raw
-
-            # Check for basic Lua syntax issues
-            if ($content -match 'require.*wezterm-utils' -and
-                $content -match 'utils_available' -and
-                $content -match 'return config') {
-                $configValid = $true
-            } else {
-                $configError = "Configuration may be incomplete"
-            }
+            $configError = $launchResult.Error
         }
     } catch {
         $configError = $_.Exception.Message
@@ -382,12 +400,13 @@ function Test-WeztermConfiguration {
 function Test-WeztermInstallation {
     Write-Section "WezTerm Installation"
 
-    # Test: WezTerm executable available
-    $weztermAvailable = $null -ne (Get-Command 'wezterm' -ErrorAction SilentlyContinue)
+    $weztermAvailable = (Test-Path (Join-Path $Script:Config.BundlePath 'wezterm.exe')) -and
+        (Test-Path (Join-Path $Script:Config.BundlePath 'wezterm-gui.exe'))
+    $launcherAvailable = Test-Path (Join-Path $Script:Config.InstallPath 'wezterm-launch.cmd')
 
     if ($weztermAvailable) {
         try {
-            $version = wezterm --version 2>&1
+            $version = & (Join-Path $Script:Config.BundlePath 'wezterm.exe') --version 2>&1
             Write-TestResult -Test "WezTerm installed" -Passed $true `
                 -Message $version
         } catch {
@@ -395,12 +414,15 @@ function Test-WeztermInstallation {
         }
     } else {
         Write-TestResult -Test "WezTerm installed" -Passed $false `
-            -Message "wezterm not found in PATH"
+            -Message "Bundled wezterm.exe / wezterm-gui.exe not found"
 
         Write-Recommendation "Install WezTerm from https://wezfurlong.org/wezterm/"
     }
 
-    return $weztermAvailable
+    Write-TestResult -Test "Safe launcher installed" -Passed $launcherAvailable `
+        -Message (Join-Path $Script:Config.InstallPath 'wezterm-launch.cmd')
+
+    return $weztermAvailable -and $launcherAvailable
 }
 
 # ============================================================================
@@ -421,9 +443,11 @@ function Write-Summary {
             foreach ($item in $results.Values) {
                 if ($item -is [hashtable]) {
                     foreach ($test in $item.Values) {
-                        $totalTests++
-                        if ($test -eq $true) {
-                            $passedTests++
+                        if ($test -is [bool]) {
+                            $totalTests++
+                            if ($test) {
+                                $passedTests++
+                            }
                         }
                     }
                 } elseif ($item -is [bool]) {

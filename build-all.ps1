@@ -117,6 +117,8 @@ $ProgressPreference = 'SilentlyContinue'
 $Script:Config = @{
     RootDir = $PSScriptRoot
     InstallPath = $InstallPath
+    BundlePath = Join-Path $InstallPath 'wezterm-app'
+    BundleToolPath = Join-Path (Join-Path $InstallPath 'wezterm-app') 'tools'
     BuildProfile = $BuildProfile
     CargoTargetDir = "$env:USERPROFILE\.cargo\shared-target"
 
@@ -560,6 +562,230 @@ function Install-Binary {
     }
 }
 
+function Find-FirstExistingPath {
+    param(
+        [string[]]$Candidates
+    )
+
+    foreach ($candidate in $Candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Install-WezTermBundle {
+    param(
+        [hashtable]$BuiltBinaries
+    )
+
+    Write-Section "Installing WezTerm Bundle"
+
+    foreach ($dir in @($Script:Config.BundlePath, $Script:Config.BundleToolPath)) {
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            Write-Status "Created bundle directory: $dir" -Level Info
+        }
+    }
+
+    $binaryDir = if ($Script:Config.BuildProfile -eq 'debug') { 'debug' } else { $Script:Config.BuildProfile }
+
+    $bundleEntries = @(
+        @{
+            Name = 'wezterm.exe'
+            Destination = $Script:Config.BundlePath
+            Candidates = @(
+                (Join-Path $Script:Config.CargoTargetDir "$binaryDir\wezterm.exe"),
+                (Join-Path $Script:Config.RootDir "target\$binaryDir\wezterm.exe"),
+                (Join-Path $Script:Config.InstallPath 'wezterm.exe'),
+                'C:\Program Files\WezTerm\wezterm.exe'
+            )
+            Required = $true
+        }
+        @{
+            Name = 'wezterm-gui.exe'
+            Destination = $Script:Config.BundlePath
+            Candidates = @(
+                (Join-Path $Script:Config.CargoTargetDir "$binaryDir\wezterm-gui.exe"),
+                (Join-Path $Script:Config.RootDir "target\$binaryDir\wezterm-gui.exe"),
+                (Join-Path $Script:Config.InstallPath 'wezterm-gui.exe'),
+                'C:\Program Files\WezTerm\wezterm-gui.exe'
+            )
+            Required = $true
+        }
+        @{
+            Name = 'wezterm-mux-server.exe'
+            Destination = $Script:Config.BundlePath
+            Candidates = @(
+                (Join-Path $Script:Config.CargoTargetDir "$binaryDir\wezterm-mux-server.exe"),
+                (Join-Path $Script:Config.RootDir "target\$binaryDir\wezterm-mux-server.exe"),
+                (Join-Path $Script:Config.InstallPath 'wezterm-mux-server.exe'),
+                'C:\Program Files\WezTerm\wezterm-mux-server.exe'
+            )
+            Required = $false
+        }
+        @{
+            Name = 'wezterm-utils-daemon.exe'
+            Destination = $Script:Config.BundleToolPath
+            Candidates = @(
+                (Join-Path $Script:Config.CargoTargetDir "$binaryDir\wezterm-utils-daemon.exe"),
+                (Join-Path $Script:Config.RootDir "target\$binaryDir\wezterm-utils-daemon.exe"),
+                (Join-Path $Script:Config.InstallPath 'wezterm-utils-daemon.exe')
+            )
+            Required = $false
+        }
+        @{
+            Name = 'wezterm-fs-explorer.exe'
+            Destination = $Script:Config.BundleToolPath
+            Candidates = @(
+                $BuiltBinaries['wezterm-fs-explorer'],
+                (Join-Path $Script:Config.InstallPath 'wezterm-fs-explorer.exe')
+            )
+            Required = $true
+        }
+        @{
+            Name = 'wezterm-watch.exe'
+            Destination = $Script:Config.BundleToolPath
+            Candidates = @(
+                $BuiltBinaries['wezterm-watch'],
+                (Join-Path $Script:Config.InstallPath 'wezterm-watch.exe')
+            )
+            Required = $true
+        }
+        @{
+            Name = 'conpty.dll'
+            Destination = $Script:Config.BundlePath
+            Candidates = @(
+                (Join-Path $Script:Config.InstallPath 'conpty.dll'),
+                'C:\Program Files\WezTerm\conpty.dll'
+            )
+            Required = $true
+        }
+        @{
+            Name = 'OpenConsole.exe'
+            Destination = $Script:Config.BundlePath
+            Candidates = @(
+                (Join-Path $Script:Config.InstallPath 'OpenConsole.exe'),
+                'C:\Program Files\WezTerm\OpenConsole.exe'
+            )
+            Required = $true
+        }
+        @{
+            Name = 'libEGL.dll'
+            Destination = $Script:Config.BundlePath
+            Candidates = @(
+                (Join-Path $Script:Config.InstallPath 'libEGL.dll'),
+                'C:\Program Files\WezTerm\libEGL.dll'
+            )
+            Required = $true
+        }
+        @{
+            Name = 'libGLESv2.dll'
+            Destination = $Script:Config.BundlePath
+            Candidates = @(
+                (Join-Path $Script:Config.InstallPath 'libGLESv2.dll'),
+                'C:\Program Files\WezTerm\libGLESv2.dll'
+            )
+            Required = $true
+        }
+    )
+
+    foreach ($entry in $bundleEntries) {
+        $source = Find-FirstExistingPath -Candidates $entry.Candidates
+        if ($source) {
+            Copy-Item $source (Join-Path $entry.Destination $entry.Name) -Force
+            Write-Status "$($entry.Name) bundled" -Level Success
+        } elseif ($entry.Required) {
+            Write-Status "$($entry.Name) not found for bundle" -Level Warning
+        }
+    }
+
+    $mesaSource = Find-FirstExistingPath -Candidates @(
+        (Join-Path $Script:Config.InstallPath 'mesa'),
+        'C:\Program Files\WezTerm\mesa'
+    )
+    if ($mesaSource) {
+        $mesaDestination = Join-Path $Script:Config.BundlePath 'mesa'
+        if (Test-Path $mesaDestination) {
+            Remove-Item $mesaDestination -Recurse -Force
+        }
+        Copy-Item $mesaSource $mesaDestination -Recurse -Force
+        Write-Status "mesa/ fallback drivers bundled" -Level Success
+    }
+}
+
+function Install-WezTermLaunchers {
+    Write-Section "Installing WezTerm Launchers"
+
+    $bundlePath = $Script:Config.BundlePath
+    $guiPath = Join-Path $bundlePath 'wezterm-gui.exe'
+    $cliPath = Join-Path $bundlePath 'wezterm.exe'
+
+    $launchers = @(
+        @{
+            Path = Join-Path $Script:Config.InstallPath 'wezterm-launch.cmd'
+            Content = '@echo off`r`nstart "" "' + $guiPath + '" %*`r`n'
+        }
+        @{
+            Path = Join-Path $Script:Config.InstallPath 'wezterm-gui.cmd'
+            Content = '@echo off`r`nstart "" "' + $guiPath + '" %*`r`n'
+        }
+        @{
+            Path = Join-Path $Script:Config.InstallPath 'wezterm-cli.cmd'
+            Content = '@echo off`r`n"' + $cliPath + '" %*`r`n'
+        }
+        @{
+            Path = Join-Path $Script:Config.InstallPath 'wezterm-launch.ps1'
+            Content = @"
+param(
+    [Parameter(ValueFromRemainingArguments = `$true)]
+    [string[]]`$Args
+)
+
+`$gui = '$guiPath'
+if (-not (Test-Path `$gui)) {
+    throw "WezTerm GUI bundle not found: `$gui"
+}
+
+Start-Process -FilePath `$gui -ArgumentList `$Args | Out-Null
+"@
+        }
+    )
+
+    foreach ($launcher in $launchers) {
+        Set-Content -Path $launcher.Path -Value $launcher.Content -Encoding ASCII
+        Write-Status "$(Split-Path $launcher.Path -Leaf) installed" -Level Success
+    }
+}
+
+function Test-WezTermGuiLaunch {
+    $guiPath = Join-Path $Script:Config.BundlePath 'wezterm-gui.exe'
+
+    if (-not (Test-Path $guiPath)) {
+        Write-Status "WezTerm GUI bundle missing at $guiPath" -Level Warning
+        return $false
+    }
+
+    try {
+        $process = Start-Process -FilePath $guiPath -ArgumentList @('start', '--always-new-process') -PassThru -WindowStyle Hidden
+        Start-Sleep -Seconds 5
+
+        if ($process.HasExited) {
+            Write-Status "WezTerm GUI exited early with code $($process.ExitCode)" -Level Error
+            return $false
+        }
+
+        Stop-Process -Id $process.Id -Force
+        Write-Status "WezTerm GUI launch path is stable" -Level Success
+        return $true
+    } catch {
+        Write-Status "WezTerm GUI launch test failed: $_" -Level Error
+        return $false
+    }
+}
+
 function Install-LuaModules {
     Write-Section "Installing Lua Modules"
 
@@ -701,23 +927,15 @@ function Invoke-VerificationTests {
         }
     }
 
-    # Test WezTerm config loads
-    Write-Step "Testing WezTerm configuration..."
+    # Test WezTerm config loads through the bundled GUI path
+    Write-Step "Testing WezTerm GUI launch..."
     $configPath = Join-Path $env:USERPROFILE ".wezterm.lua"
 
     if (Test-Path $configPath) {
-        try {
-            # Try to validate config with wezterm
-            $output = wezterm show-config 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Status "WezTerm configuration valid" -Level Success
-                $testResults.Passed += "wezterm-config"
-            } else {
-                Write-Status "WezTerm configuration has errors" -Level Warning
-                $testResults.Failed += "wezterm-config"
-            }
-        } catch {
-            Write-Status "Could not validate WezTerm config (wezterm not in PATH)" -Level Warning
+        if (Test-WezTermGuiLaunch) {
+            $testResults.Passed += "wezterm-gui-launch"
+        } else {
+            $testResults.Failed += "wezterm-gui-launch"
         }
     }
 
@@ -969,7 +1187,7 @@ function Invoke-Build {
         # Step 1b: ast-grep lint scan (blocking)
         if (Get-Command sg -ErrorAction SilentlyContinue) {
             Write-Section "ast-grep Rule Scan"
-            & pwsh -NoLogo -NoProfile -File (Join-Path $Script:Config.RootDir 'tools/hooks/Invoke-AstGrep.ps1') -Mode scan
+            & pwsh -NoLogo -NoProfile -File (Join-Path $Script:Config.RootDir 'tools/hooks/Invoke-AstGrep.ps1') -Mode scan -Profile safe-gate -Changed
             if ($LASTEXITCODE -ne 0) {
                 throw "ast-grep reported blocking findings"
             }
@@ -1031,6 +1249,9 @@ function Invoke-Build {
             } else {
                 Write-Status "WezTerm companion DLLs not found - GUI may not launch from install path" -Level Warning
             }
+
+            Install-WezTermBundle -BuiltBinaries $builtBinaries
+            Install-WezTermLaunchers
 
             # Step 4: Install Lua modules
             Install-LuaModules

@@ -314,7 +314,7 @@ config.window_padding = {
 -- STATUS BAR (shows keybindings hint)
 --------------------------------------------------------------------------------
 
-wezterm.on('update-right-status', function(window, pane)
+wezterm.on('update-status', function(window, pane)
   local keybindings = {
     "Ctrl+Shift+E: Files",
     "Ctrl+Shift+D: Dirs",

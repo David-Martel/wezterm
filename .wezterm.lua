@@ -39,6 +39,34 @@ local path_exists = shared.path_exists
 local deep_copy = shared.deep_copy
 local deep_merge = shared.deep_merge
 
+local function env_flag(name)
+  local value = os.getenv(name)
+  if not value then
+    return false
+  end
+
+  value = tostring(value):lower()
+  return value == '1' or value == 'true' or value == 'yes' or value == 'on'
+end
+
+local diag_flags = {
+  disable_embedded_dev = env_flag('WEZTERM_DIAG_DISABLE_EMBEDDED_DEV'),
+  disable_palette = env_flag('WEZTERM_DIAG_DISABLE_PALETTE'),
+  disable_panels = env_flag('WEZTERM_DIAG_DISABLE_PANELS'),
+  disable_pref_loads = env_flag('WEZTERM_DIAG_DISABLE_PREF_LOADS'),
+  disable_shell_menu = env_flag('WEZTERM_DIAG_DISABLE_SHELL_MENU'),
+  disable_status = env_flag('WEZTERM_DIAG_DISABLE_STATUS'),
+  disable_tab_titles = env_flag('WEZTERM_DIAG_DISABLE_TAB_TITLES'),
+}
+
+wezterm.log_info(string.format(
+  'config bootstrap: config_dir=%s term_program=%s wt_session=%s flags=%s',
+  tostring(wezterm.config_dir),
+  tostring(os.getenv('TERM_PROGRAM') or ''),
+  tostring(os.getenv('WT_SESSION') or ''),
+  wezterm.json_encode(diag_flags)
+))
+
 -- ============================================================================
 -- UTILITIES INTEGRATION
 -- ============================================================================
@@ -87,10 +115,18 @@ else
 end
 
 -- Initialize panels module (needs utility_bins and paths from above)
-panels = require('codex_ui.panels').new(
-  wezterm, act, shared, utility_bins, utility_paths, utils_available, utils
-)
-panels.register_events()
+if diag_flags.disable_panels then
+  panels = {
+    configure_persistence = function() end,
+    register_events = function() end,
+  }
+  wezterm.log_info('diagnostic: panels disabled via WEZTERM_DIAG_DISABLE_PANELS')
+else
+  panels = require('codex_ui.panels').new(
+    wezterm, act, shared, utility_bins, utility_paths, utils_available, utils
+  )
+  panels.register_events()
+end
 
 -- ============================================================================
 -- PLATFORM DETECTION
@@ -132,7 +168,9 @@ local function save_ui_preferences(preferences)
   )
 end
 
-local ui_preferences = prefs_io.load(ui_preferences_path, path_exists, wezterm)
+local ui_preferences = diag_flags.disable_pref_loads
+  and {}
+  or prefs_io.load(ui_preferences_path, path_exists, wezterm)
 local panel_preferences_path = utility_paths.state_dir .. '\\panel-preferences.lua'
 
 local function normalize_panel_preferences(preferences)
@@ -162,7 +200,9 @@ local function save_panel_preferences(preferences)
 end
 
 local panel_preferences = normalize_panel_preferences(
-  prefs_io.load(panel_preferences_path, path_exists, wezterm)
+  diag_flags.disable_pref_loads
+    and {}
+    or prefs_io.load(panel_preferences_path, path_exists, wezterm)
 )
 
 local function pref(key, fallback)
@@ -277,7 +317,9 @@ local config_context = {
     if toast_message then window:toast_notification('WezTerm', toast_message, nil, 3000) end
   end,
 }
-local palette = require('codex_ui.palette').new(wezterm, act, schemes, ui_preferences)
+local palette = diag_flags.disable_palette
+  and { build_palette = function() return {} end }
+  or require('codex_ui.palette').new(wezterm, act, schemes, ui_preferences)
 
 -- ============================================================================
 -- VISUAL APPEARANCE
@@ -595,7 +637,10 @@ config.scrollback_lines = 9001
 -- ============================================================================
 
 -- Default shell based on platform
-if is_windows then
+if is_windows and diag_flags.disable_shell_menu then
+  config.default_prog = { 'pwsh.exe' }
+  config.default_cwd = wezterm.home_dir
+elseif is_windows then
   -- Match Windows Terminal defaults
   config.default_prog = { 'pwsh.exe' }
   config.default_cwd = wezterm.home_dir
@@ -858,10 +903,10 @@ if llm_features.enabled and llm_features.status_badge then
   end)
 end
 
-local enable_custom_status = pref('custom_status_bar', true)
+local enable_custom_status = pref('custom_status_bar', true) and not diag_flags.disable_status
 
 if enable_custom_status then
-  wezterm.on('update-right-status', function(window, pane)
+  wezterm.on('update-status', function(window, pane)
     chrome.update_right_status(window, pane)
   end)
 end
@@ -870,7 +915,7 @@ end
 -- TAB TITLE (Show process and directory)
 -- ============================================================================
 
-local enable_custom_tab_title = pref('custom_tab_titles', true)
+local enable_custom_tab_title = pref('custom_tab_titles', true) and not diag_flags.disable_tab_titles
 
 if enable_custom_tab_title then
   wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
@@ -929,7 +974,7 @@ end
 
 -- Attempt to load embedded development configuration if it exists
 local embedded_config_path = wezterm.config_dir .. '/embedded-dev-config.lua'
-local embedded_config_exists = false
+local embedded_config_exists = not diag_flags.disable_embedded_dev
 
 -- Check if file exists
 local f = io.open(embedded_config_path, 'r')

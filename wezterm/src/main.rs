@@ -765,6 +765,16 @@ fn run() -> anyhow::Result<()> {
     }
 }
 
+#[cfg(windows)]
+fn should_attach_parent_console() -> bool {
+    matches!(
+        std::env::var("WEZTERM_ATTACH_PARENT_CONSOLE")
+            .ok()
+            .map(|value| value.to_ascii_lowercase()),
+        Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "on")
+    )
+}
+
 fn delegate_to_gui(saver: UmaskSaver) -> anyhow::Result<()> {
     use std::process::Command;
 
@@ -783,7 +793,8 @@ fn delegate_to_gui(saver: UmaskSaver) -> anyhow::Result<()> {
         .join(exe_name);
 
     let mut cmd = Command::new(exe);
-    if cfg!(windows) {
+    #[cfg(windows)]
+    if should_attach_parent_console() {
         cmd.arg("--attach-parent-console");
     }
 

@@ -227,7 +227,7 @@ end)
 ```lua
 local wezterm = require 'wezterm'
 
-wezterm.on('update-right-status', function(window, pane)
+wezterm.on('update-status', function(window, pane)
   -- Run wezterm-watch --status in background and parse output
   local success, stdout, stderr = wezterm.run_child_process({
     'wezterm-watch',
