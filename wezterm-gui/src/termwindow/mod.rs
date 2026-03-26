@@ -1090,7 +1090,9 @@ impl TermWindow {
         match self.do_paint_webgpu_impl() {
             Ok(ok) => Ok(ok),
             Err(err) => {
-                if let Some(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) = err.downcast_ref::<wgpu::SurfaceError>() {
+                if let Some(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) =
+                    err.downcast_ref::<wgpu::SurfaceError>()
+                {
                     self.webgpu.as_mut().unwrap().resize(self.dimensions);
                     return self.do_paint_webgpu_impl();
                 }
@@ -1790,7 +1792,9 @@ impl TermWindow {
         self.invalidate_modal();
         self.input_map = InputMap::new(&config);
         self.leader_is_down = None;
-        if let Some(rs) = self.render_state.as_mut() { rs.config_changed() }
+        if let Some(rs) = self.render_state.as_mut() {
+            rs.config_changed()
+        }
         let dimensions = self.dimensions;
 
         if let Err(err) = self.fonts.config_changed(&config) {
@@ -2466,10 +2470,7 @@ impl TermWindow {
 
     /// Returns the Prompt semantic zones
     fn get_semantic_prompt_zones(&mut self, pane: &Arc<dyn Pane>) -> &[StableRowIndex] {
-        let cache = self
-            .semantic_zones
-            .entry(pane.pane_id())
-            .or_default();
+        let cache = self.semantic_zones.entry(pane.pane_id()).or_default();
 
         let seqno = pane.get_current_seqno();
         if cache.seqno != seqno {
@@ -2877,16 +2878,16 @@ impl TermWindow {
                         )?;
                         self.assign_overlay_for_pane(pane.pane_id(), search);
                     }
-                    if let Some(overlay) = self.pane_state(pane.pane_id())
-                        .overlay
-                        .as_mut() { overlay.key_table_state.activate(KeyTableArgs {
-                                name: "search_mode",
-                                timeout_milliseconds: None,
-                                replace_current,
-                                one_shot: false,
-                                until_unknown: false,
-                                prevent_fallback: false,
-                            }); }
+                    if let Some(overlay) = self.pane_state(pane.pane_id()).overlay.as_mut() {
+                        overlay.key_table_state.activate(KeyTableArgs {
+                            name: "search_mode",
+                            timeout_milliseconds: None,
+                            replace_current,
+                            one_shot: false,
+                            until_unknown: false,
+                            prevent_fallback: false,
+                        });
+                    }
                 }
             }
             QuickSelect => {
@@ -2924,16 +2925,16 @@ impl TermWindow {
                         )?;
                         self.assign_overlay_for_pane(pane.pane_id(), copy);
                     }
-                    if let Some(overlay) = self.pane_state(pane.pane_id())
-                        .overlay
-                        .as_mut() { overlay.key_table_state.activate(KeyTableArgs {
-                                name: "copy_mode",
-                                timeout_milliseconds: None,
-                                replace_current,
-                                one_shot: false,
-                                until_unknown: false,
-                                prevent_fallback: false,
-                            }); }
+                    if let Some(overlay) = self.pane_state(pane.pane_id()).overlay.as_mut() {
+                        overlay.key_table_state.activate(KeyTableArgs {
+                            name: "copy_mode",
+                            timeout_milliseconds: None,
+                            replace_current,
+                            one_shot: false,
+                            until_unknown: false,
+                            prevent_fallback: false,
+                        });
+                    }
                 }
             }
             AdjustPaneSize(direction, amount) => {

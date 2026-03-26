@@ -8,9 +8,19 @@ use std::fmt::Display;
 use wezterm_dynamic::{FromDynamic, FromDynamicOptions, ToDynamic, Value};
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Display, PartialOrd, Ord, FromDynamic, ToDynamic,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    PartialOrd,
+    Ord,
+    FromDynamic,
+    ToDynamic,
+    Default,
 )]
-#[derive(Default)]
 pub enum FontStyle {
     #[default]
     Normal,
@@ -18,11 +28,20 @@ pub enum FontStyle {
     Oblique,
 }
 
-
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Display, PartialOrd, Ord, FromDynamic, ToDynamic,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    PartialOrd,
+    Ord,
+    FromDynamic,
+    ToDynamic,
+    Default,
 )]
-#[derive(Default)]
 pub enum FontStretch {
     UltraCondensed,
     ExtraCondensed,
@@ -67,7 +86,6 @@ impl FontStretch {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FontWeight(u16);
@@ -643,15 +661,13 @@ pub struct StyleRule {
     pub font: TextStyle,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromDynamic, ToDynamic)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromDynamic, ToDynamic, Default)]
 pub enum AllowSquareGlyphOverflow {
     Never,
     Always,
     #[default]
     WhenFollowedBySpace,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromDynamic, ToDynamic)]
 pub enum FontLocatorSelection {

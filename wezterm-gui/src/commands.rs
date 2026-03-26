@@ -322,10 +322,7 @@ impl CommandDef {
         // And sweep to pick up stuff from their key assignments
         let inputmap = InputMap::new(config);
         for ((keycode, mods), entry) in inputmap.keys.default.iter() {
-            if result
-                .iter()
-                .any(|cmd| cmd.action == entry.action)
-            {
+            if result.iter().any(|cmd| cmd.action == entry.action) {
                 continue;
             }
             if let Some(cmd) = derive_command_from_key_assignment(&entry.action) {
@@ -341,10 +338,7 @@ impl CommandDef {
         }
         for table in inputmap.keys.by_name.values() {
             for entry in table.values() {
-                if result
-                    .iter()
-                    .any(|cmd| cmd.action == entry.action)
-                {
+                if result.iter().any(|cmd| cmd.action == entry.action) {
                     continue;
                 }
                 if let Some(cmd) = derive_command_from_key_assignment(&entry.action) {

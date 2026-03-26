@@ -291,10 +291,9 @@ async fn spawn_tab_in_domain_if_mux_is_empty(
 
     let domain = domain.unwrap_or_else(|| mux.default_domain());
 
-    if !is_connecting
-        && have_panes_in_domain_and_ws(&domain, &workspace) {
-            return Ok(());
-        }
+    if !is_connecting && have_panes_in_domain_and_ws(&domain, &workspace) {
+        return Ok(());
+    }
 
     let window_id = {
         // Force the builder to notify the frontend early,
@@ -409,12 +408,11 @@ async fn async_run_terminal_gui(
     opts: StartCommand,
     should_publish: bool,
 ) -> anyhow::Result<()> {
-    let unix_socket_path =
-        config::RUNTIME_DIR.join(format!("gui-sock-{}", unsafe {
-            // SAFETY: libc::getpid() is a standard system call that always
-            // succeeds and has no safety preconditions in this context.
-            libc::getpid()
-        }));
+    let unix_socket_path = config::RUNTIME_DIR.join(format!("gui-sock-{}", unsafe {
+        // SAFETY: libc::getpid() is a standard system call that always
+        // succeeds and has no safety preconditions in this context.
+        libc::getpid()
+    }));
     std::env::set_var("WEZTERM_UNIX_SOCKET", unix_socket_path.clone());
     wezterm_blob_leases::register_storage(Arc::new(
         wezterm_blob_leases::simple_tempdir::SimpleTempDir::new_in(&*config::CACHE_DIR)?,
@@ -1220,9 +1218,7 @@ fn run() -> anyhow::Result<()> {
     config::lua::add_context_setup_func(window_funcs::register);
     config::lua::add_context_setup_func(crate::scripting::register);
     config::lua::add_context_setup_func(crate::stats::register);
-    config::lua::add_context_setup_func(|lua| {
-        wezterm_module_framework::register_lua_apis(lua)
-    });
+    config::lua::add_context_setup_func(|lua| wezterm_module_framework::register_lua_apis(lua));
 
     stats::Stats::init()?;
     let _saver = umask::UmaskSaver::new();

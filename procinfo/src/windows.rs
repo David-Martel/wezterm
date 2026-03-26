@@ -410,6 +410,9 @@ impl LocalProcessInfo {
             }
         }
 
-        procs.iter().find(|info| info.th32ProcessID == pid).map(|info| build_proc(info, &procs))
+        procs
+            .iter()
+            .find(|info| info.th32ProcessID == pid)
+            .map(|info| build_proc(info, &procs))
     }
 }

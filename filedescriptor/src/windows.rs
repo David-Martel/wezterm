@@ -38,8 +38,7 @@ const STD_INPUT_HANDLE: u32 = 4294967286; // -10
 const STD_OUTPUT_HANDLE: u32 = 4294967285; // -11
 const STD_ERROR_HANDLE: u32 = 4294967284; // -12
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) enum HandleType {
     Char,
     Disk,
@@ -48,7 +47,6 @@ pub(crate) enum HandleType {
     #[default]
     Unknown,
 }
-
 
 impl<T: AsRawHandle> AsRawFileDescriptor for T {
     fn as_raw_file_descriptor(&self) -> RawFileDescriptor {

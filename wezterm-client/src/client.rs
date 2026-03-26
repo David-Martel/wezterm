@@ -1022,7 +1022,10 @@ impl Reconnectable {
             )?
         };
 
-        ui.output_str(&format!("Connecting to {} using TLS (rustls)\n", remote_address));
+        ui.output_str(&format!(
+            "Connecting to {} using TLS (rustls)\n",
+            remote_address
+        ));
         let stream = TcpStream::connect(remote_address)
             .with_context(|| format!("connecting to {}", remote_address))?;
         stream.set_nodelay(true)?;
@@ -1034,8 +1037,8 @@ impl Reconnectable {
             .as_deref()
             .unwrap_or(remote_host_name);
 
-        let tls_stream = TlsClientStream::connect(stream, config, server_name)
-            .with_context(|| {
+        let tls_stream =
+            TlsClientStream::connect(stream, config, server_name).with_context(|| {
                 format!(
                     "TLS connect to {} with server name {}",
                     remote_address, server_name,
@@ -1118,7 +1121,10 @@ impl Reconnectable {
             .configure()?
             .verify_hostname(!tls_client.accept_invalid_hostnames);
 
-        ui.output_str(&format!("Connecting to {} using TLS (OpenSSL)\n", remote_address));
+        ui.output_str(&format!(
+            "Connecting to {} using TLS (OpenSSL)\n",
+            remote_address
+        ));
         let stream = TcpStream::connect(remote_address)
             .with_context(|| format!("connecting to {}", remote_address))?;
         stream.set_nodelay(true)?;

@@ -8,10 +8,10 @@ use smol::Async;
 use wezterm_uds::UnixStream;
 
 // TLS stream imports - feature-gated
-#[cfg(feature = "rustls")]
-use async_rustls::AsyncRustlsStream;
 #[cfg(feature = "openssl")]
 use async_ossl::AsyncSslStream;
+#[cfg(feature = "rustls")]
+use async_rustls::AsyncRustlsStream;
 
 #[cfg(unix)]
 pub trait AsRawDesc: std::os::unix::io::AsRawFd + std::os::fd::AsFd {}
