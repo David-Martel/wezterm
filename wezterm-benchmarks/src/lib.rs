@@ -9,17 +9,17 @@
 
 #![allow(dead_code)]
 
-pub mod ipc;
 pub mod fs;
 pub mod git;
+pub mod ipc;
 pub mod memory;
-pub mod startup;
 pub mod monitoring;
+pub mod startup;
 
 // Re-export commonly used types
-pub use ipc::{IpcClient, ConnectionPool, MessageBatcher};
-pub use fs::{DirectoryScanner, FileCache, DebouncedWatcher};
-pub use git::{GitStatusCache, GitOperations};
-pub use memory::{MemoryPool, BufferPool, ObjectPool};
+pub use fs::{DebouncedWatcher, DirectoryScanner, FileCache};
+pub use git::{GitOperations, GitStatusCache};
+pub use ipc::{ConnectionPool, IpcClient, MessageBatcher};
+pub use memory::{BufferPool, MemoryPool, ObjectPool};
+pub use monitoring::{MetricsCollector, PerfMonitor};
 pub use startup::{LazyInitializer, StartupOptimizer};
-pub use monitoring::{PerfMonitor, MetricsCollector};

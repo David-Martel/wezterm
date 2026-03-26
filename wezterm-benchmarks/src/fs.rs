@@ -1,18 +1,18 @@
 //! High-performance file system operations with caching and parallelism
 
+use dashmap::DashMap;
+use lru::LruCache;
+use memmap2::{Mmap, MmapOptions};
+use parking_lot::Mutex as SyncMutex;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::{Mutex, RwLock};
-use dashmap::DashMap;
-use lru::LruCache;
-use parking_lot::Mutex as SyncMutex;
-use memmap2::{Mmap, MmapOptions};
 use walkdir::WalkDir;
-use rayon::prelude::*;
-use std::num::NonZeroUsize;
-use serde::{Serialize, Deserialize};
 
 /// Directory entry with metadata
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -31,17 +31,17 @@ pub struct DirectoryScanner {
 impl DirectoryScanner {
     pub fn new() -> Self {
         Self {
-            cache: Arc::new(SyncMutex::new(
-                LruCache::new(NonZeroUsize::new(100).unwrap())
-            )),
+            cache: Arc::new(SyncMutex::new(LruCache::new(
+                NonZeroUsize::new(100).unwrap(),
+            ))),
         }
     }
 
     pub fn with_cache(size: usize) -> Self {
         Self {
-            cache: Arc::new(SyncMutex::new(
-                LruCache::new(NonZeroUsize::new(size).unwrap())
-            )),
+            cache: Arc::new(SyncMutex::new(LruCache::new(
+                NonZeroUsize::new(size).unwrap(),
+            ))),
         }
     }
 
@@ -49,7 +49,8 @@ impl DirectoryScanner {
         let entries = tokio::task::spawn_blocking({
             let path = path.to_path_buf();
             move || Self::scan_sync(&path)
-        }).await??;
+        })
+        .await??;
 
         // Update cache
         {
@@ -125,7 +126,8 @@ impl ParallelScanner {
                 .collect();
 
             Ok(entries)
-        }).await?
+        })
+        .await?
     }
 }
 
@@ -215,9 +217,9 @@ pub struct FileCache {
 impl FileCache {
     pub fn new(max_files: usize) -> Self {
         Self {
-            cache: Arc::new(SyncMutex::new(
-                LruCache::new(NonZeroUsize::new(max_files).unwrap())
-            )),
+            cache: Arc::new(SyncMutex::new(LruCache::new(
+                NonZeroUsize::new(max_files).unwrap(),
+            ))),
         }
     }
 

@@ -1,8 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use tokio::runtime::Runtime;
-use std::time::{Duration, Instant};
-use wezterm_benchmarks::ipc::{IpcClient, IpcMessage, ConnectionPool, MessageBatcher};
 use bytes::Bytes;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::time::{Duration, Instant};
+use tokio::runtime::Runtime;
+use wezterm_benchmarks::ipc::{ConnectionPool, IpcClient, IpcMessage, MessageBatcher};
 
 fn bench_ipc_roundtrip(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
@@ -65,9 +65,7 @@ fn bench_connection_pooling(c: &mut Criterion) {
     });
 
     group.bench_function("with_pool", |b| {
-        let pool = rt.block_on(async {
-            ConnectionPool::new(10).await
-        });
+        let pool = rt.block_on(async { ConnectionPool::new(10).await });
 
         b.to_async(&rt).iter(|| async {
             let client = pool.get_or_create("test").await;
@@ -99,9 +97,7 @@ fn bench_message_batching(c: &mut Criterion) {
             let client = IpcClient::connect_json().await.unwrap();
             let mut batcher = MessageBatcher::new(client);
 
-            let futures: Vec<_> = (0..100)
-                .map(|i| batcher.send("echo", i))
-                .collect();
+            let futures: Vec<_> = (0..100).map(|i| batcher.send("echo", i)).collect();
 
             let _results = futures::future::join_all(futures).await;
         });

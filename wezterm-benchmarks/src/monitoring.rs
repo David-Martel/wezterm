@@ -1,17 +1,17 @@
 //! Performance monitoring and metrics collection
 
+use dashmap::DashMap;
+use parking_lot::RwLock;
+use prometheus::{
+    Counter, CounterVec, Encoder, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, Opts,
+    Registry, TextEncoder,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use parking_lot::RwLock;
-use prometheus::{
-    Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec,
-    Encoder, TextEncoder, Opts, Registry,
-};
-use serde::{Serialize, Deserialize};
-use systemstat::{System, Platform};
+use systemstat::{Platform, System};
 use tokio::sync::mpsc;
-use dashmap::DashMap;
 
 /// Performance metrics collector
 pub struct MetricsCollector {
@@ -33,38 +33,42 @@ impl MetricsCollector {
         let ipc_latency = HistogramVec::new(
             HistogramOpts::new("ipc_latency_seconds", "IPC operation latency"),
             &["operation", "format"],
-        ).expect("failed to create ipc_latency histogram");
+        )
+        .expect("failed to create ipc_latency histogram");
 
         let file_ops = CounterVec::new(
             Opts::new("file_operations_total", "Total file operations"),
             &["operation", "status"],
-        ).unwrap();
+        )
+        .unwrap();
 
         let memory_usage = GaugeVec::new(
             Opts::new("memory_usage_bytes", "Memory usage in bytes"),
             &["component"],
-        ).unwrap();
+        )
+        .unwrap();
 
         let cpu_usage = GaugeVec::new(
             Opts::new("cpu_usage_percent", "CPU usage percentage"),
             &["component"],
-        ).unwrap();
+        )
+        .unwrap();
 
-        let startup_time = Histogram::with_opts(
-            HistogramOpts::new("startup_time_seconds", "Utility startup time"),
-        ).expect("failed to create startup_time histogram");
+        let startup_time = Histogram::with_opts(HistogramOpts::new(
+            "startup_time_seconds",
+            "Utility startup time",
+        ))
+        .expect("failed to create startup_time histogram");
 
-        let git_cache_hits = Counter::new(
-            "git_cache_hits_total", "Git cache hits",
-        ).expect("failed to create git_cache_hits counter");
+        let git_cache_hits = Counter::new("git_cache_hits_total", "Git cache hits")
+            .expect("failed to create git_cache_hits counter");
 
-        let git_cache_misses = Counter::new(
-            "git_cache_misses_total", "Git cache misses",
-        ).expect("failed to create git_cache_misses counter");
+        let git_cache_misses = Counter::new("git_cache_misses_total", "Git cache misses")
+            .expect("failed to create git_cache_misses counter");
 
-        let active_connections = Gauge::new(
-            "active_connections", "Number of active IPC connections",
-        ).expect("failed to create active_connections gauge");
+        let active_connections =
+            Gauge::new("active_connections", "Number of active IPC connections")
+                .expect("failed to create active_connections gauge");
 
         // Register all metrics
         registry.register(Box::new(ipc_latency.clone())).unwrap();
@@ -73,8 +77,12 @@ impl MetricsCollector {
         registry.register(Box::new(cpu_usage.clone())).unwrap();
         registry.register(Box::new(startup_time.clone())).unwrap();
         registry.register(Box::new(git_cache_hits.clone())).unwrap();
-        registry.register(Box::new(git_cache_misses.clone())).unwrap();
-        registry.register(Box::new(active_connections.clone())).unwrap();
+        registry
+            .register(Box::new(git_cache_misses.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(active_connections.clone()))
+            .unwrap();
 
         Self {
             registry: Arc::new(registry),
@@ -97,21 +105,15 @@ impl MetricsCollector {
 
     pub fn record_file_operation(&self, operation: &str, success: bool) {
         let status = if success { "success" } else { "failure" };
-        self.file_ops
-            .with_label_values(&[operation, status])
-            .inc();
+        self.file_ops.with_label_values(&[operation, status]).inc();
     }
 
     pub fn update_memory_usage(&self, component: &str, bytes: f64) {
-        self.memory_usage
-            .with_label_values(&[component])
-            .set(bytes);
+        self.memory_usage.with_label_values(&[component]).set(bytes);
     }
 
     pub fn update_cpu_usage(&self, component: &str, percent: f64) {
-        self.cpu_usage
-            .with_label_values(&[component])
-            .set(percent);
+        self.cpu_usage.with_label_values(&[component]).set(percent);
     }
 
     pub fn record_startup_time(&self, duration: Duration) {
@@ -299,8 +301,10 @@ impl AlertSystem {
                 "ipc_latency",
                 AlertSeverity::Warning,
                 "IPC",
-                format!("IPC latency P99 {}ms exceeds threshold {}ms",
-                    metrics.ipc_latency_p99, thresholds.ipc_latency_ms),
+                format!(
+                    "IPC latency P99 {}ms exceeds threshold {}ms",
+                    metrics.ipc_latency_p99, thresholds.ipc_latency_ms
+                ),
                 metrics.ipc_latency_p99,
                 thresholds.ipc_latency_ms,
             );
@@ -312,8 +316,10 @@ impl AlertSystem {
                 "memory_usage",
                 AlertSeverity::Warning,
                 "Memory",
-                format!("Memory usage {}MB exceeds threshold {}MB",
-                    metrics.memory_usage_mb, thresholds.memory_usage_mb),
+                format!(
+                    "Memory usage {}MB exceeds threshold {}MB",
+                    metrics.memory_usage_mb, thresholds.memory_usage_mb
+                ),
                 metrics.memory_usage_mb,
                 thresholds.memory_usage_mb,
             );
@@ -325,8 +331,10 @@ impl AlertSystem {
                 "cpu_usage",
                 AlertSeverity::Critical,
                 "CPU",
-                format!("CPU usage {}% exceeds threshold {}%",
-                    metrics.cpu_usage_percent, thresholds.cpu_usage_percent),
+                format!(
+                    "CPU usage {}% exceeds threshold {}%",
+                    metrics.cpu_usage_percent, thresholds.cpu_usage_percent
+                ),
                 metrics.cpu_usage_percent,
                 thresholds.cpu_usage_percent,
             );

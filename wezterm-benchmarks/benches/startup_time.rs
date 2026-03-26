@@ -1,10 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use tokio::runtime::Runtime;
-use std::time::{Duration, Instant};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::process::Command;
+use std::time::{Duration, Instant};
+use tokio::runtime::Runtime;
 use wezterm_benchmarks::startup::{
-    LazyInitializer, PreloadedResources, StartupOptimizer,
-    DeferredInitializer
+    DeferredInitializer, LazyInitializer, PreloadedResources, StartupOptimizer,
 };
 
 fn bench_utility_startup(c: &mut Criterion) {
@@ -23,10 +22,7 @@ fn bench_utility_startup(c: &mut Criterion) {
         group.bench_function(name, |b| {
             b.iter(|| {
                 let start = Instant::now();
-                let output = Command::new("cmd")
-                    .args(["/C", cmd])
-                    .output()
-                    .unwrap();
+                let output = Command::new("cmd").args(["/C", cmd]).output().unwrap();
                 let duration = start.elapsed();
                 black_box((output, duration))
             });
@@ -210,7 +206,8 @@ fn bench_config_parsing(c: &mut Criterion) {
             "retry_count": 3,
             "buffer_size": 4096
         }
-    }).to_string();
+    })
+    .to_string();
 
     let toml_config = r#"
         [utilities.wedit]

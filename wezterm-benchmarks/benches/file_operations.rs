@@ -1,11 +1,10 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use tokio::runtime::Runtime;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::path::PathBuf;
 use tempfile::TempDir;
+use tokio::runtime::Runtime;
 use walkdir::WalkDir;
 use wezterm_benchmarks::fs::{
-    DirectoryScanner, IncrementalScanner, ParallelScanner,
-    FileCache, MemoryMappedReader
+    DirectoryScanner, FileCache, IncrementalScanner, MemoryMappedReader, ParallelScanner,
 };
 
 fn create_test_directory(num_files: usize, depth: usize) -> TempDir {
@@ -42,19 +41,15 @@ fn bench_directory_scanning(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(num_files as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("walkdir", num_files),
-            &path,
-            |b, path| {
-                b.iter(|| {
-                    let count = WalkDir::new(path)
-                        .into_iter()
-                        .filter_map(Result::ok)
-                        .count();
-                    black_box(count)
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("walkdir", num_files), &path, |b, path| {
+            b.iter(|| {
+                let count = WalkDir::new(path)
+                    .into_iter()
+                    .filter_map(Result::ok)
+                    .count();
+                black_box(count)
+            });
+        });
 
         group.bench_with_input(
             BenchmarkId::new("parallel_scan", num_files),
@@ -205,7 +200,9 @@ fn bench_file_watching(c: &mut Criterion) {
             // Simulate file changes
             for i in 0..10 {
                 let file = path.join(format!("change_{}.txt", i));
-                tokio::fs::write(&file, format!("change {}", i)).await.unwrap();
+                tokio::fs::write(&file, format!("change {}", i))
+                    .await
+                    .unwrap();
             }
 
             // Process events
@@ -216,15 +213,16 @@ fn bench_file_watching(c: &mut Criterion) {
 
     group.bench_function("debounced_events", |b| {
         b.to_async(&rt).iter(|| async {
-            let watcher = wezterm_benchmarks::fs::DebouncedWatcher::new(
-                std::time::Duration::from_millis(50)
-            );
+            let watcher =
+                wezterm_benchmarks::fs::DebouncedWatcher::new(std::time::Duration::from_millis(50));
             watcher.watch(&path).await.unwrap();
 
             // Simulate rapid file changes
             for i in 0..50 {
                 let file = path.join(format!("rapid_{}.txt", i));
-                tokio::fs::write(&file, format!("change {}", i)).await.unwrap();
+                tokio::fs::write(&file, format!("change {}", i))
+                    .await
+                    .unwrap();
             }
 
             // Wait for debouncing
