@@ -197,10 +197,12 @@ impl KittyImageData {
         }
 
         match self {
-            Self::Direct(data) => base64_decode(data).map_err(|err| std::io::Error::new(
+            Self::Direct(data) => base64_decode(data).map_err(|err| {
+                std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     format!("base64 decode: {err:#}"),
-                )),
+                )
+            }),
             Self::DirectBin(bin) => Ok(bin),
             Self::File {
                 path,
@@ -225,9 +227,10 @@ impl KittyImageData {
                     }
 
                     if let Ok(t) = std::env::var("TMPDIR")
-                        && p.starts_with(&t) {
-                            return true;
-                        }
+                        && p.starts_with(&t)
+                    {
+                        return true;
+                    }
 
                     false
                 }
@@ -366,18 +369,20 @@ mod win {
         let handle = unsafe { OpenFileMappingW(FILE_MAP_ALL_ACCESS, 0, wide_name.as_ptr()) };
         if handle.is_null() {
             let err = std::io::Error::last_os_error();
-            return Err(std::io::Error::other(
-                format!("OpenFileMappingW {} failed: {:#}", name, err),
-            ));
+            return Err(std::io::Error::other(format!(
+                "OpenFileMappingW {} failed: {:#}",
+                name, err
+            )));
         }
 
         let handle_wrapper = HandleWrapper { handle };
         let buf = unsafe { MapViewOfFile(handle_wrapper.handle, FILE_MAP_ALL_ACCESS, 0, 0, 0) };
         if buf.is_null() {
             let err = std::io::Error::last_os_error();
-            return Err(std::io::Error::other(
-                format!("MapViewOfFile failed: {:#}", err),
-            ));
+            return Err(std::io::Error::other(format!(
+                "MapViewOfFile failed: {:#}",
+                err
+            )));
         }
 
         let shm = SharedMemObject {
@@ -395,22 +400,18 @@ mod win {
         };
         if res == 0 {
             let err = std::io::Error::last_os_error();
-            return Err(std::io::Error::other(
-                format!(
-                    "Can't get the size of Shared Memory, VirtualQuery failed: {:#}",
-                    err
-                ),
-            ));
+            return Err(std::io::Error::other(format!(
+                "Can't get the size of Shared Memory, VirtualQuery failed: {:#}",
+                err
+            )));
         }
         let mut size = memory_info.RegionSize;
         let offset = data_offset.unwrap_or(0) as usize;
         if offset >= size {
-            return Err(std::io::Error::other(
-                format!(
-                    "offset {} bigger than or equal to shm region size {}",
-                    offset, size
-                ),
-            ));
+            return Err(std::io::Error::other(format!(
+                "offset {} bigger than or equal to shm region size {}",
+                offset, size
+            )));
         }
         size = size.saturating_sub(offset);
         if let Some(val) = data_size {
@@ -1061,8 +1062,7 @@ impl KittyImage {
         let mut keys: BTreeMap<&str, &str> = BTreeMap::new();
         for k_v in key_string.split(',') {
             let (k, v) = k_v.split_once('=')?;
-            
-            
+
             keys.insert(k, v);
         }
 

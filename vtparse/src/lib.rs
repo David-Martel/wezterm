@@ -336,8 +336,7 @@ impl OscState {
             }
         } else if !self.full {
             let mut buf = [0u8; 8];
-            self
-                .buffer
+            self.buffer
                 .extend_from_slice(param.encode_utf8(&mut buf).as_bytes());
 
             #[cfg(all(not(feature = "std"), not(feature = "alloc")))]

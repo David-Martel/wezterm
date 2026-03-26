@@ -197,8 +197,7 @@ impl CommandBuilderFrag {
     }
 }
 
-#[derive(Debug, FromDynamic, ToDynamic)]
-#[derive(Default)]
+#[derive(Debug, FromDynamic, ToDynamic, Default)]
 enum HandySplitDirection {
     Left,
     #[default]
@@ -207,7 +206,6 @@ enum HandySplitDirection {
     Bottom,
 }
 impl_lua_conversion_dynamic!(HandySplitDirection);
-
 
 #[derive(Debug, FromDynamic, ToDynamic)]
 struct SpawnWindow {
