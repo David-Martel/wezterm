@@ -63,7 +63,9 @@ impl ChannelWrap {
             Self::Russh(chan) => {
                 if let Some(signal) = chan.exit_signal() {
                     Some(ExitStatus::with_signal(signal))
-                } else { chan.exit_status().map(ExitStatus::with_exit_code) }
+                } else {
+                    chan.exit_status().map(ExitStatus::with_exit_code)
+                }
             }
         }
     }
@@ -206,9 +208,7 @@ impl ChannelWrap {
             Self::LibSsh(chan) => Ok(chan.request_auth_agent()?),
 
             #[cfg(feature = "russh")]
-            Self::Russh(chan) => {
-                crate::russh_backend::block_on(chan.request_agent_forwarding())
-            }
+            Self::Russh(chan) => crate::russh_backend::block_on(chan.request_agent_forwarding()),
         }
     }
 

@@ -70,14 +70,17 @@ impl WezTermHandler {
         // Get the key bytes, handling potential errors
         let key_bytes = match key.to_bytes() {
             Ok(bytes) => bytes,
-            Err(_) => return format!("{} <unable to compute fingerprint>", key.algorithm().as_str()),
+            Err(_) => {
+                return format!(
+                    "{} <unable to compute fingerprint>",
+                    key.algorithm().as_str()
+                )
+            }
         };
 
         let hash = Sha256::digest(&key_bytes);
-        let fingerprint = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &hash[..],
-        );
+        let fingerprint =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &hash[..]);
 
         format!(
             "{} SHA256:{}",
@@ -114,10 +117,9 @@ impl russh::client::Handler for WezTermHandler {
                 .map_err(|e| anyhow::anyhow!("Failed to send host verification event: {}", e))?;
 
             // Wait for user response
-            let accepted = reply_rx
-                .recv()
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to receive host verification response: {}", e))?;
+            let accepted = reply_rx.recv().await.map_err(|e| {
+                anyhow::anyhow!("Failed to receive host verification response: {}", e)
+            })?;
 
             host_key_verified.store(accepted, Ordering::SeqCst);
             Ok(accepted)

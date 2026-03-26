@@ -65,8 +65,7 @@ impl ServerCertVerifier for WezTermCertVerifier {
         // Check validity period
         let now_secs = now.as_secs();
         if !cert.validity().is_valid_at(
-            x509_parser::time::ASN1Time::from_timestamp(now_secs as i64)
-                .expect("valid timestamp"),
+            x509_parser::time::ASN1Time::from_timestamp(now_secs as i64).expect("valid timestamp"),
         ) {
             return Err(rustls::Error::InvalidCertificate(
                 rustls::CertificateError::Expired,
@@ -261,8 +260,7 @@ impl ClientCertVerifier for WezTermClientCertVerifier {
         // Check validity
         let now_secs = now.as_secs();
         if !cert.validity().is_valid_at(
-            x509_parser::time::ASN1Time::from_timestamp(now_secs as i64)
-                .expect("valid timestamp"),
+            x509_parser::time::ASN1Time::from_timestamp(now_secs as i64).expect("valid timestamp"),
         ) {
             return Err(rustls::Error::InvalidCertificate(
                 rustls::CertificateError::Expired,
@@ -285,11 +283,9 @@ impl ClientCertVerifier for WezTermClientCertVerifier {
 
             // DN matches, now verify the cryptographic signature
             // The root's subject_public_key_info contains the public key
-            if let Ok((_, root_spki)) =
-                x509_parser::prelude::SubjectPublicKeyInfo::from_der(
-                    root.subject_public_key_info.as_ref()
-                )
-            {
+            if let Ok((_, root_spki)) = x509_parser::prelude::SubjectPublicKeyInfo::from_der(
+                root.subject_public_key_info.as_ref(),
+            ) {
                 // Verify the end-entity certificate's signature using the root's public key
                 if cert.verify_signature(Some(&root_spki)).is_ok() {
                     verified_against_root = true;
@@ -310,7 +306,10 @@ impl ClientCertVerifier for WezTermClientCertVerifier {
                     // Check if current cert was issued by this intermediate
                     if current_cert.issuer().as_raw() == int_cert.subject().as_raw() {
                         // Verify signature
-                        if current_cert.verify_signature(Some(int_cert.public_key())).is_ok() {
+                        if current_cert
+                            .verify_signature(Some(int_cert.public_key()))
+                            .is_ok()
+                        {
                             // Move up the chain
                             current_cert = int_cert;
 
@@ -319,12 +318,14 @@ impl ClientCertVerifier for WezTermClientCertVerifier {
                                 if root.subject.as_ref() == current_cert.issuer().as_raw() {
                                     if let Ok((_, root_spki)) =
                                         x509_parser::prelude::SubjectPublicKeyInfo::from_der(
-                                            root.subject_public_key_info.as_ref()
+                                            root.subject_public_key_info.as_ref(),
                                         )
                                     {
                                         if current_cert.verify_signature(Some(&root_spki)).is_ok() {
                                             verified_against_root = true;
-                                            log::trace!("Certificate chain verified against root CA");
+                                            log::trace!(
+                                                "Certificate chain verified against root CA"
+                                            );
                                             break;
                                         }
                                     }
@@ -340,7 +341,9 @@ impl ClientCertVerifier for WezTermClientCertVerifier {
         }
 
         if !verified_against_root {
-            log::error!("Client certificate not issued by trusted CA (signature verification failed)");
+            log::error!(
+                "Client certificate not issued by trusted CA (signature verification failed)"
+            );
             return Err(rustls::Error::InvalidCertificate(
                 rustls::CertificateError::UnknownIssuer,
             ));

@@ -24,9 +24,7 @@ struct RusshFileReader<'a> {
 #[cfg(feature = "russh")]
 impl<'a> std::io::Read for RusshFileReader<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        block_on(self.file.read(buf)).map_err(|e| {
-            std::io::Error::other(e.to_string())
-        })
+        block_on(self.file.read(buf)).map_err(|e| std::io::Error::other(e.to_string()))
     }
 }
 
@@ -39,15 +37,11 @@ struct RusshFileWriter<'a> {
 #[cfg(feature = "russh")]
 impl<'a> std::io::Write for RusshFileWriter<'a> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        block_on(self.file.write(buf)).map_err(|e| {
-            std::io::Error::other(e.to_string())
-        })
+        block_on(self.file.write(buf)).map_err(|e| std::io::Error::other(e.to_string()))
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        block_on(self.file.flush()).map_err(|e| {
-            std::io::Error::other(e.to_string())
-        })
+        block_on(self.file.flush()).map_err(|e| std::io::Error::other(e.to_string()))
     }
 }
 
@@ -80,10 +74,7 @@ impl FileWrap {
 
     pub fn set_metadata(
         &mut self,
-        #[cfg_attr(
-            not(any(feature = "ssh2", feature = "russh")),
-            allow(unused_variables)
-        )]
+        #[cfg_attr(not(any(feature = "ssh2", feature = "russh")), allow(unused_variables))]
         metadata: Metadata,
     ) -> SftpChannelResult<()> {
         match self {

@@ -22,7 +22,8 @@ mod session_events {
 
         // Fill the channel to capacity
         for i in 0..8 {
-            tx.try_send(Box::leak(format!("event{}", i).into_boxed_str())).unwrap();
+            tx.try_send(Box::leak(format!("event{}", i).into_boxed_str()))
+                .unwrap();
         }
 
         // Channel should be full
@@ -114,15 +115,10 @@ mod host_verification {
             drop(reply_tx);
 
             // Try to receive with timeout
-            let result = smol::future::or(
-                async {
-                    reply_rx.recv().await.ok()
-                },
-                async {
-                    smol::Timer::after(Duration::from_millis(100)).await;
-                    None
-                },
-            )
+            let result = smol::future::or(async { reply_rx.recv().await.ok() }, async {
+                smol::Timer::after(Duration::from_millis(100)).await;
+                None
+            })
             .await;
 
             assert!(result.is_none());
@@ -275,7 +271,9 @@ mod channel_messages {
         for sig in signals {
             // Verify signal names are valid strings
             assert!(!sig.is_empty());
-            assert!(sig.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
+            assert!(sig
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
         }
     }
 }
@@ -293,8 +291,8 @@ mod error_handling {
 
     #[test]
     fn test_anyhow_error_chain() {
-        let result: anyhow::Result<()> = Err(anyhow::anyhow!("base error"))
-            .context("additional context");
+        let result: anyhow::Result<()> =
+            Err(anyhow::anyhow!("base error")).context("additional context");
 
         let err = result.unwrap_err();
         let err_string = format!("{:#}", err);

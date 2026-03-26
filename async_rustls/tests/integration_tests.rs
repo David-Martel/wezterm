@@ -4,10 +4,10 @@
 //! the implementation works end-to-end.
 
 use async_rustls::{
-    build_client_config_with_custom_verifier, build_server_config,
-    extract_cn, TlsClientStream, TlsServerStream, WezTermCertVerifier,
+    build_client_config_with_custom_verifier, build_server_config, extract_cn, TlsClientStream,
+    TlsServerStream, WezTermCertVerifier,
 };
-use rcgen::{CertificateParams, DnType, IsCa, BasicConstraints};
+use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa};
 use rustls::pki_types::CertificateDer;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -32,7 +32,9 @@ impl TestPki {
     fn new(client_cn: &str) -> Self {
         // Generate CA using Certificate::from_params
         let mut ca_params = CertificateParams::new(vec!["Test CA".into()]);
-        ca_params.distinguished_name.push(DnType::CommonName, "Test CA");
+        ca_params
+            .distinguished_name
+            .push(DnType::CommonName, "Test CA");
         ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
 
         let ca_cert = rcgen::Certificate::from_params(ca_params).unwrap();
@@ -42,7 +44,9 @@ impl TestPki {
 
         // Generate server certificate (self-signed for simplicity in testing)
         let mut server_params = CertificateParams::new(vec!["localhost".into()]);
-        server_params.distinguished_name.push(DnType::CommonName, "localhost");
+        server_params
+            .distinguished_name
+            .push(DnType::CommonName, "localhost");
 
         let server_cert = rcgen::Certificate::from_params(server_params).unwrap();
         let server_cert_pem = server_cert.serialize_pem().unwrap();
@@ -50,7 +54,9 @@ impl TestPki {
 
         // Generate client certificate
         let mut client_params = CertificateParams::new(vec![client_cn.into()]);
-        client_params.distinguished_name.push(DnType::CommonName, client_cn);
+        client_params
+            .distinguished_name
+            .push(DnType::CommonName, client_cn);
 
         let client_cert = rcgen::Certificate::from_params(client_params).unwrap();
         let client_cert_pem = client_cert.serialize_pem().unwrap();
@@ -70,7 +76,10 @@ impl TestPki {
     /// Generate a self-signed certificate not issued by the CA.
     fn generate_untrusted_cert() -> (String, String) {
         let cert = rcgen::generate_simple_self_signed(vec!["untrusted.local".into()]).unwrap();
-        (cert.serialize_pem().unwrap(), cert.serialize_private_key_pem())
+        (
+            cert.serialize_pem().unwrap(),
+            cert.serialize_private_key_pem(),
+        )
     }
 }
 
@@ -151,8 +160,8 @@ fn test_basic_tls_handshake_no_client_auth() {
     let stream = TcpStream::connect(&addr).unwrap();
     stream.set_nodelay(true).unwrap();
 
-    let mut tls_stream = TlsClientStream::connect(stream, client_config, "localhost")
-        .expect("TLS handshake failed");
+    let mut tls_stream =
+        TlsClientStream::connect(stream, client_config, "localhost").expect("TLS handshake failed");
 
     // Send message to server
     tls_stream.write_all(b"Hello from client").unwrap();
@@ -248,19 +257,18 @@ fn test_untrusted_server_certificate_rejected() {
     thread::sleep(Duration::from_millis(100));
 
     // Client trusts only the test CA, not the untrusted cert
-    let client_config = build_client_config_with_custom_verifier(
-        None,
-        None,
-        pki.ca_cert_der.clone(),
-        true,
-    )
-    .expect("Failed to build client config");
+    let client_config =
+        build_client_config_with_custom_verifier(None, None, pki.ca_cert_der.clone(), true)
+            .expect("Failed to build client config");
 
     let stream = TcpStream::connect(&addr).unwrap();
 
     // This should fail because server cert isn't signed by our CA
     let result = TlsClientStream::connect(stream, client_config, "localhost");
-    assert!(result.is_err(), "Expected handshake to fail with untrusted cert");
+    assert!(
+        result.is_err(),
+        "Expected handshake to fail with untrusted cert"
+    );
 
     let _ = server_handle.join();
 }
@@ -273,12 +281,16 @@ fn test_untrusted_server_certificate_rejected() {
 fn test_wezterm_cert_verifier_rejects_different_ca() {
     // Generate two separate self-signed CAs
     let mut ca1_params = CertificateParams::new(vec!["CA 1".into()]);
-    ca1_params.distinguished_name.push(DnType::CommonName, "CA 1");
+    ca1_params
+        .distinguished_name
+        .push(DnType::CommonName, "CA 1");
     ca1_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     let ca1_cert = rcgen::Certificate::from_params(ca1_params).unwrap();
 
     let mut ca2_params = CertificateParams::new(vec!["CA 2".into()]);
-    ca2_params.distinguished_name.push(DnType::CommonName, "CA 2");
+    ca2_params
+        .distinguished_name
+        .push(DnType::CommonName, "CA 2");
     ca2_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     let ca2_cert = rcgen::Certificate::from_params(ca2_params).unwrap();
 
@@ -303,7 +315,9 @@ fn test_wezterm_cert_verifier_accepts_self_signed_as_ca() {
     // Generate a self-signed cert that will serve as both CA and server cert
     // (This mimics the behavior of a self-signed CA certificate)
     let mut params = CertificateParams::new(vec!["localhost".into()]);
-    params.distinguished_name.push(DnType::CommonName, "localhost");
+    params
+        .distinguished_name
+        .push(DnType::CommonName, "localhost");
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     let cert = rcgen::Certificate::from_params(params).unwrap();
 
@@ -334,7 +348,9 @@ fn test_wezterm_cert_verifier_accepts_self_signed_as_ca() {
 fn test_extract_cn_standard_format() {
     // Test standard CN
     let mut params = CertificateParams::new(vec!["test".into()]);
-    params.distinguished_name.push(DnType::CommonName, "standard_user");
+    params
+        .distinguished_name
+        .push(DnType::CommonName, "standard_user");
     let cert = rcgen::Certificate::from_params(params).unwrap();
     let cert_der = CertificateDer::from(cert.serialize_der().unwrap());
 
@@ -346,7 +362,9 @@ fn test_extract_cn_standard_format() {
 fn test_extract_cn_encoded_format() {
     // Test encoded CN
     let mut params = CertificateParams::new(vec!["test".into()]);
-    params.distinguished_name.push(DnType::CommonName, "user:john/dept=eng");
+    params
+        .distinguished_name
+        .push(DnType::CommonName, "user:john/dept=eng");
     let cert = rcgen::Certificate::from_params(params).unwrap();
     let cert_der = CertificateDer::from(cert.serialize_der().unwrap());
 
@@ -428,13 +446,8 @@ fn test_large_data_transfer() {
         certs[0].clone()
     };
 
-    let client_config = build_client_config_with_custom_verifier(
-        None,
-        None,
-        server_cert_der,
-        true,
-    )
-    .unwrap();
+    let client_config =
+        build_client_config_with_custom_verifier(None, None, server_cert_der, true).unwrap();
 
     let stream = TcpStream::connect(&addr).unwrap();
     let mut tls_stream = TlsClientStream::connect(stream, client_config, "localhost").unwrap();
@@ -496,13 +509,8 @@ fn test_bidirectional_communication() {
         certs[0].clone()
     };
 
-    let client_config = build_client_config_with_custom_verifier(
-        None,
-        None,
-        server_cert_der,
-        true,
-    )
-    .unwrap();
+    let client_config =
+        build_client_config_with_custom_verifier(None, None, server_cert_der, true).unwrap();
 
     let stream = TcpStream::connect(&addr).unwrap();
     let mut tls_stream = TlsClientStream::connect(stream, client_config, "localhost").unwrap();
@@ -546,7 +554,9 @@ fn test_alpn_config_set() {
 
     // Verify ALPN is set on server config
     assert!(
-        server_config.alpn_protocols.contains(&b"wezterm-mux".to_vec()),
+        server_config
+            .alpn_protocols
+            .contains(&b"wezterm-mux".to_vec()),
         "Server config should have wezterm-mux ALPN"
     );
 
@@ -559,17 +569,14 @@ fn test_alpn_config_set() {
         certs[0].clone()
     };
 
-    let client_config = build_client_config_with_custom_verifier(
-        None,
-        None,
-        server_cert_der,
-        true,
-    )
-    .unwrap();
+    let client_config =
+        build_client_config_with_custom_verifier(None, None, server_cert_der, true).unwrap();
 
     // Verify ALPN is set on client config
     assert!(
-        client_config.alpn_protocols.contains(&b"wezterm-mux".to_vec()),
+        client_config
+            .alpn_protocols
+            .contains(&b"wezterm-mux".to_vec()),
         "Client config should have wezterm-mux ALPN"
     );
 }
