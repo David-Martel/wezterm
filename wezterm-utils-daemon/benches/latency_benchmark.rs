@@ -68,9 +68,7 @@ fn benchmark_round_trip_latency(c: &mut Criterion) {
     let pipe_name = r"\\.\pipe\wezterm-utils-test";
 
     // Test if daemon is running
-    let daemon_available = rt.block_on(async {
-        ClientOptions::new().open(pipe_name).is_ok()
-    });
+    let daemon_available = rt.block_on(async { ClientOptions::new().open(pipe_name).is_ok() });
 
     if !daemon_available {
         println!("Skipping round-trip benchmark: daemon not running");

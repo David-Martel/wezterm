@@ -8,7 +8,7 @@ pub struct SearchResult {
     pub path: PathBuf,
     /// Indices of matched characters in the file name for highlighting
     /// Reserved for future highlighting functionality - not yet implemented
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "TODO: add justification")]
     pub indices: Vec<u32>,
 }
 

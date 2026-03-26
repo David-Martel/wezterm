@@ -44,10 +44,10 @@ pub type WatchCallbackId = u64;
 
 /// A watch subscription.
 struct WatchSubscription {
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "TODO: add justification")]
     path: PathBuf,
     watcher: Watcher,
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "TODO: add justification")]
     recursive: bool,
     /// Handle to the forwarder thread for this subscription
     forwarder_handle: Option<JoinHandle<()>>,
@@ -99,7 +99,7 @@ impl WatcherModuleHandle {
         // Spawn a forwarder thread for this watcher
         let forwarder_handle = if let Some(ref tx) = *event_tx_guard {
             let tx = tx.clone();
-            let handle = thread::Builder::new()
+            match thread::Builder::new()
                 .name(format!("watcher-fwd-{}", id))
                 .spawn(move || {
                     while let Ok(event) = watcher_rx.recv() {
@@ -108,9 +108,13 @@ impl WatcherModuleHandle {
                             break;
                         }
                     }
-                })
-                .ok();
-            handle
+                }) {
+                Ok(handle) => Some(handle),
+                Err(e) => {
+                    log::warn!("Failed to spawn watcher forwarder thread {}: {}", id, e);
+                    None
+                }
+            }
         } else {
             None
         };
@@ -289,7 +293,7 @@ impl Module for WatcherModule {
         //   2. Forwarded to the Mux notification system so GUI subscribers
         //      (e.g. Lua `wezterm.on("file-watch-event", ...)`) can react.
         if let Some(rx) = event_rx {
-            thread::Builder::new()
+            if let Err(e) = thread::Builder::new()
                 .name("watcher-aggregator".to_string())
                 .spawn(move || {
                     loop {
@@ -349,7 +353,13 @@ impl Module for WatcherModule {
                         }
                     }
                 })
-                .ok();
+            {
+                log::error!("Failed to spawn watcher aggregator thread: {}", e);
+                return Err(anyhow::anyhow!(
+                    "Failed to spawn watcher aggregator thread: {}",
+                    e
+                ));
+            }
         }
 
         self.state = ModuleState::Running;
@@ -394,39 +404,37 @@ impl Module for WatcherModule {
         let watch_handle = handle.clone();
         watcher_mod.set(
             "watch",
-            lua.create_function(
-                move |_, (path, options): (String, Option<mlua::Table>)| {
-                    let recursive = options
-                        .as_ref()
-                        .and_then(|t| t.get::<_, bool>("recursive").ok())
-                        .unwrap_or(true);
-                    let use_gitignore = options
-                        .as_ref()
-                        .and_then(|t| t.get::<_, bool>("gitignore").ok())
-                        .unwrap_or(true);
+            lua.create_function(move |_, (path, options): (String, Option<mlua::Table>)| {
+                let recursive = options
+                    .as_ref()
+                    .and_then(|t| t.get::<_, bool>("recursive").ok())
+                    .unwrap_or(true);
+                let use_gitignore = options
+                    .as_ref()
+                    .and_then(|t| t.get::<_, bool>("gitignore").ok())
+                    .unwrap_or(true);
 
-                    let path_buf = PathBuf::from(&path);
-                    match watch_handle.watch(path_buf, recursive, use_gitignore) {
-                        Ok(id) => {
-                            log::info!(
-                                "Lua: Started watching '{}' (recursive={}, gitignore={}) -> id {}",
-                                path,
-                                recursive,
-                                use_gitignore,
-                                id
-                            );
-                            Ok(id)
-                        }
-                        Err(e) => {
-                            log::error!("Lua: Failed to watch '{}': {}", path, e);
-                            Err(mlua::Error::RuntimeError(format!(
-                                "Failed to watch path: {}",
-                                e
-                            )))
-                        }
+                let path_buf = PathBuf::from(&path);
+                match watch_handle.watch(path_buf, recursive, use_gitignore) {
+                    Ok(id) => {
+                        log::info!(
+                            "Lua: Started watching '{}' (recursive={}, gitignore={}) -> id {}",
+                            path,
+                            recursive,
+                            use_gitignore,
+                            id
+                        );
+                        Ok(id)
                     }
-                },
-            )?,
+                    Err(e) => {
+                        log::error!("Lua: Failed to watch '{}': {}", path, e);
+                        Err(mlua::Error::RuntimeError(format!(
+                            "Failed to watch path: {}",
+                            e
+                        )))
+                    }
+                }
+            })?,
         )?;
 
         // wezterm.watcher.unwatch(watch_id)
@@ -434,19 +442,17 @@ impl Module for WatcherModule {
         let unwatch_handle = handle.clone();
         watcher_mod.set(
             "unwatch",
-            lua.create_function(move |_, id: u64| {
-                match unwatch_handle.unwatch(id) {
-                    Ok(()) => {
-                        log::info!("Lua: Stopped watching id {}", id);
-                        Ok(())
-                    }
-                    Err(e) => {
-                        log::error!("Lua: Failed to unwatch id {}: {}", id, e);
-                        Err(mlua::Error::RuntimeError(format!(
-                            "Failed to unwatch: {}",
-                            e
-                        )))
-                    }
+            lua.create_function(move |_, id: u64| match unwatch_handle.unwatch(id) {
+                Ok(()) => {
+                    log::info!("Lua: Stopped watching id {}", id);
+                    Ok(())
+                }
+                Err(e) => {
+                    log::error!("Lua: Failed to unwatch id {}: {}", id, e);
+                    Err(mlua::Error::RuntimeError(format!(
+                        "Failed to unwatch: {}",
+                        e
+                    )))
                 }
             })?,
         )?;

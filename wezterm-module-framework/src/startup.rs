@@ -14,7 +14,6 @@
 use crate::modules::fs_explorer::FsExplorerModule;
 use crate::modules::watcher::WatcherModule;
 use crate::registry::ModuleRegistry;
-use crate::Capabilities;
 
 /// Initialize all built-in modules and register them with the global registry.
 ///
@@ -39,7 +38,10 @@ pub fn initialize_modules() {
     for info in &modules {
         log::debug!(
             "  Module '{}' ({}) - capabilities: {:?}, state: {:?}",
-            info.id, info.name, info.capabilities, info.state
+            info.id,
+            info.name,
+            info.capabilities,
+            info.state
         );
     }
 }
@@ -90,6 +92,10 @@ mod tests {
         let registry = ModuleRegistry::global();
         let modules = registry.list_modules();
         // At least fs-explorer and watcher should be registered
-        assert!(modules.len() >= 2, "Expected at least 2 modules, got {}", modules.len());
+        assert!(
+            modules.len() >= 2,
+            "Expected at least 2 modules, got {}",
+            modules.len()
+        );
     }
 }

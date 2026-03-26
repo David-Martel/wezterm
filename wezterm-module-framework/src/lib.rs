@@ -110,7 +110,10 @@ pub enum ModuleState {
 impl ModuleState {
     /// Check if the module is in a state where it can be started.
     pub fn can_start(&self) -> bool {
-        matches!(self, ModuleState::Initialized | ModuleState::Paused | ModuleState::Stopped)
+        matches!(
+            self,
+            ModuleState::Initialized | ModuleState::Paused | ModuleState::Stopped
+        )
     }
 
     /// Check if the module is currently active.

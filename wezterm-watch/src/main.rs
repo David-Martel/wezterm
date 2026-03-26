@@ -130,7 +130,10 @@ async fn main() -> Result<()> {
 
     // Main event loop
     let receiver = watcher.receiver();
-    let mut pending_events: Vec<(wezterm_watch::watcher::WatchEvent, Option<wezterm_watch::git::FileStatus>)> = Vec::new();
+    let mut pending_events: Vec<(
+        wezterm_watch::watcher::WatchEvent,
+        Option<wezterm_watch::git::FileStatus>,
+    )> = Vec::new();
 
     while running.load(Ordering::SeqCst) {
         match receiver.recv_timeout(std::time::Duration::from_millis(100)) {
@@ -151,9 +154,8 @@ async fn main() -> Result<()> {
                         let repo_root = monitor.repo_root();
                         for (evt, status_slot) in &mut pending_events {
                             if let Some(path) = evt.path() {
-                                *status_slot = GitMonitor::resolve_file_status(
-                                    &info, path, repo_root,
-                                );
+                                *status_slot =
+                                    GitMonitor::resolve_file_status(&info, path, repo_root);
                             }
                         }
                     }

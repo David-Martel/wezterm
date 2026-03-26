@@ -151,9 +151,10 @@ async fn start_daemon(
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to listen for Ctrl+C");
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            error!("Failed to listen for Ctrl+C: {}", e);
+            return;
+        }
         info!("Received shutdown signal");
         let _ = shutdown_tx.send(());
     });
@@ -220,11 +221,7 @@ async fn show_status() -> Result<()> {
     let mut client = connect_client(&config.pipe_name).await?;
 
     // Send status request
-    let request = JsonRpcRequest::new(
-        "daemon/status",
-        None,
-        Some(RequestId::Number(1)),
-    );
+    let request = JsonRpcRequest::new("daemon/status", None, Some(RequestId::Number(1)));
 
     let json = serde_json::to_string(&request)?;
     client.write_all(format!("{}\n", json).as_bytes()).await?;
@@ -242,8 +239,7 @@ async fn show_status() -> Result<()> {
 }
 
 fn init_tracing(level: &str, json_logs: bool) {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
 
     if json_logs {
         tracing_subscriber::registry()

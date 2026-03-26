@@ -10,6 +10,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{split, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 #[cfg(windows)]
+#[expect(
+    unused_imports,
+    reason = "reserved for future named pipe listener implementation"
+)]
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
 /// Trait to allow abstraction over different stream types
@@ -24,6 +28,7 @@ use uuid::Uuid;
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
 /// Connection keep-alive interval
+#[expect(dead_code, reason = "reserved for keep-alive heartbeat implementation")]
 const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Connection timeout after no activity
@@ -39,6 +44,7 @@ pub struct Connection {
     pub name: RwLock<Option<String>>,
     pub capabilities: RwLock<Vec<String>>,
     pub subscriptions: RwLock<Vec<EventSubscription>>,
+    #[expect(dead_code, reason = "reserved for connection age metrics")]
     pub connected_at: Instant,
     pub last_activity: Arc<RwLock<Instant>>,
     pub tx: mpsc::UnboundedSender<JsonRpcMessage>,
@@ -65,11 +71,13 @@ impl Connection {
         self.update_activity();
     }
 
+    #[expect(dead_code, reason = "reserved for event subscription protocol")]
     pub fn subscribe(&self, subscriptions: Vec<EventSubscription>) {
         self.subscriptions.write().extend(subscriptions);
         self.update_activity();
     }
 
+    #[expect(dead_code, reason = "reserved for event subscription protocol")]
     pub fn unsubscribe(&self, event_types: &[String]) {
         self.subscriptions
             .write()

@@ -7,14 +7,13 @@ use crate::error::{DaemonError, Result};
 use crate::protocol::JsonRpcMessage;
 use crate::router::MessageRouter;
 use std::sync::Arc;
+use tokio::io::{AsyncRead, AsyncWrite};
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 #[cfg(unix)]
 use tokio::net::UnixListener;
 use tokio::sync::mpsc;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{error, info, warn};
-
 
 /// IPC Server (Named Pipes on Windows, Unix Domain Sockets on Unix)
 pub struct IpcServer {
@@ -24,16 +23,9 @@ pub struct IpcServer {
 }
 
 impl IpcServer {
-    pub fn new(
-        path: impl Into<String>,
-        max_connections: usize,
-        version: String,
-    ) -> Self {
+    pub fn new(path: impl Into<String>, max_connections: usize, version: String) -> Self {
         let connection_manager = Arc::new(ConnectionManager::new(max_connections));
-        let router = Arc::new(MessageRouter::new(
-            connection_manager.clone(),
-            version,
-        ));
+        let router = Arc::new(MessageRouter::new(connection_manager.clone(), version));
 
         Self {
             path: path.into(),
@@ -67,7 +59,9 @@ impl IpcServer {
                         let cm = self.connection_manager.clone();
 
                         tokio::spawn(async move {
-                            if let Err(e) = Self::accept_named_pipe_connection(server, cm, router_tx).await {
+                            if let Err(e) =
+                                Self::accept_named_pipe_connection(server, cm, router_tx).await
+                            {
                                 error!(error = %e, "Connection handling error");
                             }
                         });
@@ -85,8 +79,9 @@ impl IpcServer {
             // Remove existing socket if it exists
             let _ = std::fs::remove_file(&self.path);
 
-            let listener = UnixListener::bind(&self.path)
-                .map_err(|e| DaemonError::Connection(format!("Failed to bind to {}: {}", self.path, e)))?;
+            let listener = UnixListener::bind(&self.path).map_err(|e| {
+                DaemonError::Connection(format!("Failed to bind to {}: {}", self.path, e))
+            })?;
 
             loop {
                 match listener.accept().await {
@@ -109,10 +104,13 @@ impl IpcServer {
     }
 
     #[cfg(windows)]
-    async fn create_named_pipe_instance(&self) -> Result<tokio::net::windows::named_pipe::NamedPipeServer> {
+    async fn create_named_pipe_instance(
+        &self,
+    ) -> Result<tokio::net::windows::named_pipe::NamedPipeServer> {
         let mut server_opts = ServerOptions::new();
 
-        server_opts.access_inbound(true)
+        server_opts
+            .access_inbound(true)
             .access_outbound(true)
             .first_pipe_instance(false)
             .reject_remote_clients(true);
@@ -197,15 +195,17 @@ pub async fn connect_client(path: &str) -> Result<Box<dyn crate::connections::St
 
     #[cfg(unix)]
     {
-        let stream = tokio::net::UnixStream::connect(path)
-            .await
-            .map_err(|e| DaemonError::Connection(format!("Failed to connect to {}: {}", path, e)))?;
+        let stream = tokio::net::UnixStream::connect(path).await.map_err(|e| {
+            DaemonError::Connection(format!("Failed to connect to {}: {}", path, e))
+        })?;
         return Ok(Box::new(stream));
     }
 
     #[cfg(windows)]
     {
-        Err(DaemonError::Connection("Failed to connect to pipe after retries".to_string()))
+        Err(DaemonError::Connection(
+            "Failed to connect to pipe after retries".to_string(),
+        ))
     }
     #[cfg(not(any(windows, unix)))]
     {
@@ -219,11 +219,7 @@ mod tests {
 
     #[test]
     fn test_server_creation() {
-        let server = IpcServer::new(
-            "wezterm-utils-test",
-            10,
-            "0.1.0".to_string(),
-        );
+        let server = IpcServer::new("wezterm-utils-test", 10, "0.1.0".to_string());
 
         assert!(server.path.contains("wezterm-utils-test"));
     }

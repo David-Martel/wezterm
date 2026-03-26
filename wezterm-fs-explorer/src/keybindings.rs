@@ -1,7 +1,7 @@
-#[allow(dead_code)]
+#[expect(dead_code, reason = "TODO: add justification")]
 pub struct KeyBindings;
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "TODO: add justification")]
 impl KeyBindings {
     pub fn get_help_text() -> Vec<(&'static str, &'static str)> {
         vec![

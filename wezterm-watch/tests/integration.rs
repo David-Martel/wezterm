@@ -45,11 +45,7 @@ fn init_git_repo(path: &Path) -> Result<()> {
 }
 
 /// Helper to wait for and collect events with timeout
-fn collect_events(
-    watcher: &FileWatcher,
-    timeout: Duration,
-    max_events: usize,
-) -> Vec<WatchEvent> {
+fn collect_events(watcher: &FileWatcher, timeout: Duration, max_events: usize) -> Vec<WatchEvent> {
     let receiver = watcher.receiver();
     let mut events = Vec::new();
     let start = std::time::Instant::now();
@@ -111,7 +107,8 @@ fn test_file_change_detection() {
     // Wait for create event
     let event = wait_for_event_type(&watcher, Duration::from_secs(2), "created");
     assert!(
-        event.is_some() || wait_for_event_type(&watcher, Duration::from_secs(1), "modified").is_some(),
+        event.is_some()
+            || wait_for_event_type(&watcher, Duration::from_secs(1), "modified").is_some(),
         "Should detect file creation"
     );
 
@@ -534,7 +531,10 @@ fn test_git_status_integration() {
 
     // Verify file status is Modified
     let file_status = monitor.get_file_status(Path::new("tracked.txt")).unwrap();
-    assert!(file_status.is_some(), "Should have status for modified file");
+    assert!(
+        file_status.is_some(),
+        "Should have status for modified file"
+    );
     assert_eq!(file_status.unwrap(), FileStatus::Modified);
 }
 

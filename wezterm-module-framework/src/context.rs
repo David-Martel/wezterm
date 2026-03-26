@@ -109,11 +109,7 @@ impl ModuleContext {
     /// Add a tab to a window.
     ///
     /// Requires `UI_CREATE_PANE` capability.
-    pub fn add_tab_to_window(
-        &self,
-        tab: &Arc<mux::tab::Tab>,
-        window_id: WindowId,
-    ) -> Result<()> {
+    pub fn add_tab_to_window(&self, tab: &Arc<mux::tab::Tab>, window_id: WindowId) -> Result<()> {
         if !self.has_capability(Capabilities::UI_CREATE_PANE) {
             bail!("Module does not have UI_CREATE_PANE capability");
         }

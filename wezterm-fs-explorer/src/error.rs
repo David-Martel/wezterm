@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "TODO: add justification")]
 #[derive(Error, Debug)]
 pub enum ExplorerError {
     #[error("IO error: {0}")]

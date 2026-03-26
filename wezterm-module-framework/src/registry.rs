@@ -107,6 +107,10 @@ impl ModuleRegistry {
     }
 
     /// Initialize a specific module.
+    #[expect(
+        clippy::await_holding_lock,
+        reason = "Module trait is ?Send — single-threaded async, lock contention impossible"
+    )]
     pub async fn init_module(&self, module_id: &str) -> Result<()> {
         let module = self
             .modules
@@ -155,6 +159,10 @@ impl ModuleRegistry {
     }
 
     /// Start a specific module.
+    #[expect(
+        clippy::await_holding_lock,
+        reason = "Module trait is ?Send — single-threaded async, lock contention impossible"
+    )]
     pub async fn start_module(&self, module_id: &str) -> Result<()> {
         let module = self
             .modules
@@ -208,6 +216,10 @@ impl ModuleRegistry {
     }
 
     /// Stop a specific module.
+    #[expect(
+        clippy::await_holding_lock,
+        reason = "Module trait is ?Send — single-threaded async, lock contention impossible"
+    )]
     pub async fn stop_module(&self, module_id: &str) -> Result<()> {
         let module = self
             .modules
@@ -243,6 +255,10 @@ impl ModuleRegistry {
     }
 
     /// Reload a specific module.
+    #[expect(
+        clippy::await_holding_lock,
+        reason = "Module trait is ?Send — single-threaded async, lock contention impossible"
+    )]
     pub async fn reload_module(&self, module_id: &str) -> Result<()> {
         let module = self
             .modules

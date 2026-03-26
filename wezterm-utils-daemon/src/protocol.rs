@@ -188,7 +188,10 @@ pub struct EventSubscription {
 pub enum DaemonMethod {
     /// Register a utility with the daemon
     #[serde(rename = "daemon/register")]
-    Register { name: String, capabilities: Vec<String> },
+    Register {
+        name: String,
+        capabilities: Vec<String>,
+    },
 
     /// Unregister from the daemon
     #[serde(rename = "daemon/unregister")]
@@ -196,7 +199,9 @@ pub enum DaemonMethod {
 
     /// Subscribe to events
     #[serde(rename = "daemon/subscribe")]
-    Subscribe { subscriptions: Vec<EventSubscription> },
+    Subscribe {
+        subscriptions: Vec<EventSubscription>,
+    },
 
     /// Unsubscribe from events
     #[serde(rename = "daemon/unsubscribe")]
@@ -250,10 +255,8 @@ mod tests {
 
     #[test]
     fn test_response_success() {
-        let resp = JsonRpcResponse::success(
-            serde_json::json!({"status": "ok"}),
-            RequestId::Number(1),
-        );
+        let resp =
+            JsonRpcResponse::success(serde_json::json!({"status": "ok"}), RequestId::Number(1));
 
         assert!(resp.error.is_none());
         assert!(resp.result.is_some());
@@ -261,10 +264,7 @@ mod tests {
 
     #[test]
     fn test_response_error() {
-        let resp = JsonRpcResponse::error(
-            JsonRpcError::method_not_found(),
-            RequestId::Number(1),
-        );
+        let resp = JsonRpcResponse::error(JsonRpcError::method_not_found(), RequestId::Number(1));
 
         assert!(resp.error.is_some());
         assert!(resp.result.is_none());
