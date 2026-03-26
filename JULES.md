@@ -8,13 +8,29 @@
 **Repo**: `David-Martel/wezterm`
 **Auth**: Google account (run `jules login` to authenticate)
 
+## Scope And Current Role
+
+In this repo, Jules is best used for:
+
+- asynchronous PR review and compatibility review
+- broad search/refactor proposals that do not need immediate local iteration
+- test-generation suggestions and coverage expansion
+- security and dependency review
+
+Jules is not the source of truth for local integration. All Jules output must still flow through:
+
+- [TODO.md](./TODO.md)
+- [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md)
+- [AGENT_COORDINATION.md](./AGENT_COORDINATION.md)
+- local validation (`cargo check`, `cargo nextest`, `sg scan -c sgconfig.yml`, clippy)
+
 ---
 
 ## Quick Start
 
 ```bash
 # Review a PR
-jules new --repo David-Martel/wezterm "Review PR #7686 for Rust code quality and performance"
+jules new --repo David-Martel/wezterm "Review latest changes on main for Rust code quality and performance"
 
 # Write tests for a module
 jules new "Write integration tests for wezterm-utils-daemon/src/client.rs"
@@ -25,10 +41,10 @@ jules new "Fix issue #123: panel toggle crash on Alt+1"
 # Parallel exploration (up to 5)
 jules new --parallel 3 "Find all unwrap() calls in custom crates and suggest Result-based alternatives"
 
-# Pull results
+# Pull results first
 jules remote pull --session <ID>
 
-# Apply patch directly
+# Apply only after local review and validation
 jules remote pull --session <ID> --apply
 
 # Or teleport (clone + apply in one step)
@@ -201,6 +217,32 @@ jules new "Review the recent changes by Claude and Codex agents: \
 
 ---
 
+## Operating Rules For This Repo
+
+0. **Fork-only policy**: This repo is a downstream fork of `wezterm/wezterm`. Never create PRs, push commits, or contribute changes back to upstream. Jules sessions should target `David-Martel/wezterm` exclusively. Upstream is fetch-only for pulling meaningful updates.
+1. Post new Jules sessions and material findings to the direct Codex/Claude bus thread with `agent-bus-http.exe post-direct`.
+2. Convert actionable Jules findings into concrete [TODO.md](./TODO.md) items before applying patches.
+3. Do not apply Jules patches blindly; review the diff locally first.
+4. If a Jules patch touches exclusive resources or heavy build/install surfaces, coordinate first via [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md).
+5. For Rust-heavy validation after adopting Jules output, prefer namespaced targets:
+
+```powershell
+$env:RUSTC_WRAPPER='sccache'
+$env:CARGO_TARGET_DIR='C:/Users/david/.cache/<agent>/<task>'
+cargo nextest run -p wezterm-utils-daemon --no-fail-fast
+```
+
+6. If Jules findings conflict with local implementation reality, update [TODO.md](./TODO.md) and the shared bus thread rather than forcing the patch.
+
+## Current Priority Uses
+
+Cross-check these against [TODO.md](./TODO.md):
+
+- Tier 6.T: ~~PR `#7686`~~ (closed, fork-only policy) — session `16808362411090313266` findings still relevant for code quality, but the proposed daemon IPC refactor must be validated locally before adoption
+- Tier 6.U: compatibility reviews for upstream PRs `#7683`, `#7679`, `#7673`; current disposition is "reference only", not "auto-adopt"
+- Tier 6.V: keep Jules as an on-demand review tool for now; avoid broad automated PR review rollout until session noise is lower and patch quality is more predictable in this fork
+- Tier 6.W: targeted test/coverage expansion for `wezterm-utils-daemon` and `wezterm-module-framework`
+
 ## Integration with Agent Bus
 
 Jules sessions can be tracked through the agent bus for multi-agent coordination:
@@ -214,12 +256,19 @@ agent-bus-http.exe post-direct \
 
 # After session completes, pull and share results
 RESULT=$(jules remote pull --session <ID> 2>&1)
-agent-bus-http.exe send \
-  --from-agent claude --to-agent all \
+agent-bus-http.exe post-direct \
+  --from-agent claude --to-agent codex \
   --topic "jules-findings" \
   --body "$RESULT" \
-  --tags "repo:wezterm,jules,review"
+  --tag "repo:wezterm"
 ```
+
+Practical bus usage:
+
+- prefer `post-direct` / `read-direct` for Codex<->Claude Jules coordination
+- use `session-summary` or `compact-context` for long review waves
+- health-check `http://localhost:8400/health` before relying on the HTTP path for long sessions
+- treat `watch` as a live probe, not the canonical record
 
 ---
 
@@ -266,10 +315,20 @@ jules teleport <ID>
 
 | Session ID | PR/Task | Status |
 |-----------|---------|--------|
-| 16808362411090313266 | PR #7686 review (our main PR) | Running |
-| 7825580181922692933 | PR #7683 review (font thickening) | Running |
-| 11018576285087526146 | PR #7679 review (vertical tab bar) | Running |
-| 432181464351595015 | PR #7673 review (per-pane title bars) | Running |
+| 17869272520108303187 | Windows launcher panic / bundle review | In Progress |
+| 995757760320847112 | ast-grep review and rule suggestions | Awaiting User Feedback |
+| 16808362411090313266 | ~~PR #7686~~ (closed, fork-only) — code quality findings | Completed |
+| 7825580181922692933 | PR #7683 review (font thickening) | Completed |
+| 11018576285087526146 | PR #7679 review (vertical tab bar) | Completed |
+| 432181464351595015 | PR #7673 review (per-pane title bars) | Failed |
+
+### Current Disposition
+
+- `995757760320847112`: continue, but constrain follow-up to `.jules` and `rules/rust/*`; do not accept deletion of `rules/rust/avoid-unwrap.yml`, and keep async-mutex linting conservative unless the false-positive story improves.
+- `7825580181922692933`: do not adopt upstream PR `#7683` for current Windows UX work; Jules found it is FreeType-only, not effective on the DirectWrite/WebGpu path, and weaker than simply using variable font weights for Cascadia.
+- `11018576285087526146`: keep as background design input only; no direct patch or firm recommendation was produced.
+- `432181464351595015`: rerun later if per-pane title bars become a near-term product goal.
+- `16808362411090313266`: treat the patch as review material rather than an auto-apply candidate, especially around daemon IPC generalization.
 
 ---
 
@@ -279,4 +338,5 @@ jules teleport <ID>
 - [Jules CLI GitHub](https://github.com/jiahao42/jules-cli)
 - [AGENTS.md](./AGENTS.md) — Agent coordination guidelines
 - [AGENT_COORDINATION.md](./AGENT_COORDINATION.md) — Cross-agent IPC protocol
+- [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) — Exclusive-resource and heavy-build protocol
 - [TODO.md](./TODO.md) — Current task tracking

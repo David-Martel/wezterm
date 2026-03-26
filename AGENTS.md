@@ -2,6 +2,29 @@
 
 This document provides guidelines for AI agents (Claude Code, GitHub Copilot, etc.) working on the WezTerm codebase.
 
+## Repo Prompt Surface
+
+Keep the following prompt/guidance files aligned when the workflow changes:
+
+- `AGENTS.md` - cross-agent repo guidance
+- `CLAUDE.md` - primary Claude-facing repo guide
+- `.claude/CLAUDE.md` - repo-local Claude session overlay
+- `JULES.md` - Jules async-agent operating guide
+
+When shared workflow guidance changes, also cross-check:
+
+- [TODO.md](./TODO.md)
+- [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md)
+- [AGENT_COORDINATION.md](./AGENT_COORDINATION.md)
+- `~/.agents/rust-guidelines.txt`
+- `~/.agents/rust-development-guide.md`
+
+---
+
+## Fork Policy (All Agents)
+
+This is a **downstream fork** of `wezterm/wezterm`. No agent may create PRs, push commits, or contribute changes back to upstream. The `upstream` remote is fetch-only. All PRs and pushes target `David-Martel/wezterm` exclusively. Upstream is used only for pulling meaningful updates (e.g., `git fetch upstream && git merge upstream/main`).
+
 ---
 
 ## Quick Reference
@@ -249,7 +272,8 @@ mod tests {
 ```bash
 # Windows (Just)
 just build              # Build with sccache
-just clippy             # Lint (no sccache due to probe issue)
+just clippy             # Strict custom-crate/fs-explorer lint (no sccache)
+just clippy-workspace   # Explicit full-workspace lint; legacy warning debt still exists
 just test               # Run tests
 just full-local-ci      # Full validation
 
@@ -258,6 +282,25 @@ make build              # Build main binaries
 make test               # Run nextest
 make fmt                # Format code
 ```
+
+For heavy Rust builds/tests in parallel sessions:
+
+- use a private `CARGO_TARGET_DIR` by default
+- keep `sccache` shared
+- do not use repo-default `target/` unless the resource thread says it is free
+
+Recommended pattern:
+
+```powershell
+$env:RUSTC_WRAPPER='sccache'
+$env:CARGO_TARGET_DIR='C:/Users/david/.cache/<agent>/<task>'
+cargo nextest run -p wezterm-gui --no-fail-fast
+```
+
+For Rust quality references, prefer:
+
+- `~/.agents/rust-guidelines.txt`
+- `~/.agents/rust-development-guide.md`
 
 ---
 
@@ -272,8 +315,14 @@ Multiple AI agents may work on this repo concurrently. The **Agent Bus** at `htt
 
 1. **Set presence** on session start with your agent ID and capabilities
 2. **Claim files** via `POST /channels/arbitrate/<path>` before editing — check for conflicts
-3. **Check messages** every 2-3 tool calls via `GET /messages?agent=<id>&since=10&encoding=toon`
+3. **Check the direct channel** every 2-3 tool calls for shared work
 4. **Post completion summary** when done, then poll for follow-up tasks
+
+Practical default:
+
+- `curl.exe -s http://localhost:8400/health`
+- `agent-bus-http.exe read-direct --agent-a codex --agent-b claude --limit 20 --encoding toon`
+- `agent-bus-http.exe compact-context --max-tokens 2500 --since-minutes 120`
 
 ### Agent IDs
 
@@ -316,6 +365,7 @@ agent-bus.exe serve --transport stdio
 - Avoid broad `agent-bus-http.exe read --agent codex --since-minutes 1440` calls during multi-repo work; narrow by direct channel, repo, session, or thread when possible.
 - Avoid treating `compact-context` as fully healthy if it emits the known PostgreSQL `jsonb` fallback warning; coordination still works, but the read path is degraded and should be treated as advisory.
 - Avoid using `agent-bus-http.exe` as the documented MCP stdio entrypoint; keep `agent-bus.exe serve --transport stdio` for that path.
+- Avoid treating `watch --encoding toon` as the canonical record in PowerShell; use it as a live probe, then confirm state with `read-direct` or `session-summary`.
 
 ### Rules
 
@@ -327,6 +377,34 @@ agent-bus.exe serve --transport stdio
 - See `~/.codex/docs/AGENT_BUS.md` for command selection and `agent-bus-http.exe` guidance
 - See [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) for the repo-specific resource contention protocol
 - See `C:/codedev/agent-bus/AGENT_COMMUNICATIONS.md` for the canonical protocol spec
+
+### Quality Gates and Automated Tooling
+
+Default enforcement now flows through repo-local PowerShell wrappers:
+
+- `tools/hooks/Invoke-AstGrep.ps1`
+- `tools/hooks/Invoke-WorkspaceRustChecks.ps1`
+
+Current operating model:
+
+- `just quick-check` runs before `just build` and `just release`
+- `just lint-ast-grep` = broader custom-crate scan useful for backlog work
+- `just lint-ast-grep-gate` = safe gate for changed files / CI-friendly enforcement
+- `just ast-grep-fix-safe` = only syntax-preserving autofixes
+- `just clippy` = strict custom-crate/fs-explorer lane
+- `just clippy-workspace` = explicit full-workspace lane, still subject to legacy warning debt
+
+Auto-fix policy:
+
+- allow only local, syntax-preserving rewrites
+- never auto-rewrite semantic control flow such as blanket `unwrap()` -> `?`
+- stage safe rewrites first, then fix logic intentionally in code review
+
+Hook notes:
+
+- `pre-commit` and `lefthook` are both supported
+- this machine may have `core.hooksPath=~/.git-hooks`; do not reset or override that globally without coordination
+- if hook install behavior changes, update this file, `CLAUDE.md`, `.claude/CLAUDE.md`, and [TODO.md](./TODO.md)
 
 ### Resource Contention Protocol
 
@@ -347,6 +425,12 @@ The short version for this repo:
 - [docs/specs/](./docs/specs/) — Approved design specs (UX redesign 4-phase)
 - [docs/design/](./docs/design/) — Architecture documents (AI module)
 - [JULES.md](./JULES.md) — Jules (Google) async agent integration for CI/CD, PR review, test generation
+
+Prompt/guidance updates should reflect the current TODO state, especially:
+
+- Tier 5.R/S for `agent-bus-http.exe` adoption and the current PostgreSQL fallback warning
+- Tier 5.T/U/V/W/X/Y for hook installation, ast-grep rollout, warnings-as-errors scope, inline-test suppression research, and remaining unwrap/panic backlog
+- Tier 6.T/U/V/W for current Jules review and automation work
 
 ---
 

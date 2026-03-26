@@ -7,6 +7,7 @@
 
 1. **Check the agent bus** before starting work:
    ```bash
+   curl.exe -s http://localhost:8400/health
    agent-bus-http.exe read-direct --agent-a claude --agent-b codex --limit 10 --encoding toon
    agent-bus-http.exe presence-list
    ```
@@ -23,6 +24,12 @@
    agent-bus-http.exe read-direct --agent-a claude --agent-b codex --limit 5 --encoding toon
    ```
 
+5. **Check the shared tracker and prompt surface**:
+   - `TODO.md`
+   - `RESOURCE_COORDINATION.md`
+   - `AGENTS.md`
+   - `JULES.md`
+
 ## Build Commands (Always Use These)
 
 ```powershell
@@ -38,11 +45,22 @@ just test-nextest
 # Full validation (everything: fmt, clippy, ast-grep, nextest, docs)
 just full-local-ci
 
-# Custom crate linting only
+# Custom crate linting / gates
 just lint-ast-grep
+just lint-ast-grep-gate
+just clippy
+just clippy-workspace   # explicit legacy-debt lane, not the default
 
 # Safe auto-fix (prefer-expect-over-allow, remove-redundant-format)
 just ast-grep-fix-safe
+```
+
+Heavy Rust work should default to a namespaced target dir:
+
+```powershell
+$env:RUSTC_WRAPPER='sccache'
+$env:CARGO_TARGET_DIR='C:/Users/david/.cache/claude/<task>'
+cargo nextest run -p wezterm-utils-daemon --no-fail-fast
 ```
 
 ## Resource Protocol (MANDATORY for multi-agent work)
@@ -74,9 +92,16 @@ CARGO_TARGET_DIR=C:/Users/david/.cache/claude/<task> cargo check -p <crate>
 All Rust code must follow [Microsoft Pragmatic Rust Guidelines](https://microsoft.github.io/rust-guidelines/).
 
 **Automated enforcement**:
-- `sg scan` — ast-grep rules in `rules/rust/` (13 rules, P0 blocking)
+- `sg scan -c sgconfig.yml` — config-based ast-grep rules
 - `just clippy` — clippy via `tools/hooks/Invoke-WorkspaceRustChecks.ps1`
 - `lefthook` / `pre-commit` — runs on every commit
+
+Current enforcement model:
+
+- `just lint-ast-grep-gate` is the safe blocking lane for build/CI paths
+- `just lint-ast-grep` is broader and may surface known backlog from [TODO.md](../TODO.md)
+- safe auto-fix is intentionally restricted to syntax-preserving rewrites
+- do not introduce blanket semantic rewrites such as `unwrap()` -> `?`
 
 **Key rules to remember**:
 - `unwrap()` / `expect()` only in tests — use `?` or `Result` in production code
@@ -101,10 +126,16 @@ jules new "Write tests for <file>"
 jules new "Security audit of <crate>"
 
 # Pull results
-jules remote pull --session <ID> --apply
+jules remote pull --session <ID>
 ```
 
 Jules config: `.jules` in repo root. Sessions tracked via agent bus.
+
+Jules findings should:
+
+- be summarized back to Codex/Claude via `agent-bus-http.exe post-direct`
+- become concrete `TODO.md` items if actionable
+- be locally validated with `cargo check`, `cargo nextest`, `sg scan -c sgconfig.yml`, and clippy before applying patches
 
 ## File Ownership (Current)
 
@@ -126,6 +157,10 @@ Check agent bus for current claims before editing files outside your ownership.
 
 4. **Build lock contention**: Multiple `cargo build` commands fight over `target/` lock. Use `CARGO_TARGET_DIR=C:/Users/david/.cache/claude/<task>` for parallel builds.
 
-5. **PR #7686**: Our fork's PR against upstream wezterm. All pushes to `main` auto-update it.
+5. **Fork-only policy**: This is a downstream fork — never open PRs against `wezterm/wezterm` upstream. The `upstream` remote is fetch-only (push URL disabled). `gh` defaults to `David-Martel/wezterm`.
 
 6. **Security findings**: See `SECURITY_AUDIT.md` — HIGH severity symlink following in fs-explorer needs fixing.
+
+7. **Hook installation**: This workstation currently has `core.hooksPath=~/.git-hooks`; do not reset or override it globally without coordination. Track local installation strategy in `TODO.md` Tier 5.X.
+
+8. **Prompt drift**: If you change workflow guidance, keep `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md`, and `JULES.md` aligned.

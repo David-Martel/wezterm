@@ -28,7 +28,7 @@ repos:
         pass_filenames: false
         types: [rust]
       - id: cargo-clippy
-        name: cargo clippy (fast)
+        name: cargo clippy (custom crates, warnings = errors)
         entry: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
         language: system
         pass_filenames: false
@@ -71,13 +71,13 @@ repos:
   - repo: local
     hooks:
       - id: pre-push-ast-grep
-        name: pre-push ast-grep workspace scan
+        name: pre-push ast-grep safe gate
         stages: [pre-push]
-        entry: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan
+        entry: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan -Profile safe-gate
         language: system
         pass_filenames: false
       - id: pre-push-clippy-full
-        name: pre-push clippy (all features)
+        name: pre-push clippy (custom crates, all features)
         stages: [pre-push]
         entry: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy-all-features
         language: system

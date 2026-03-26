@@ -18,6 +18,10 @@ fmt:
 clippy:
     pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
 
+clippy-workspace:
+    # The full workspace still has legacy warning debt. Keep this explicit while custom crates stay strict.
+    Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue; cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
+
 clippy-cache:
     # Attempt clippy with sccache (may fail). Use for experimentation.
     $env:RUSTC_WRAPPER="sccache"; cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
@@ -54,6 +58,9 @@ lint-ast-grep-all:
 ast-grep-fix-safe:
     pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode fix-safe
 
+lint-ast-grep-gate:
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan -Profile safe-gate -Changed
+
 full-verify: fmt clippy lint-ast-grep test check-docs sccache-stats
 
 full-local-ci: fmt clippy lint-ast-grep test-nextest check-docs arch-docs sccache-stats
@@ -62,7 +69,7 @@ full-local-ci: fmt clippy lint-ast-grep test-nextest check-docs arch-docs sccach
 quick-check:
     cargo check --workspace --all-targets
     cargo fmt --all --check
-    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan
+    pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan -Profile safe-gate -Changed
     pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
 
 # Build profiling and analysis

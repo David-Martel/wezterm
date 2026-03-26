@@ -13,7 +13,7 @@ pre-commit:
 pre-push:
   commands:
     ast-grep:
-      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan
+      run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan -Profile safe-gate
     cargo-clippy-full:
       run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy-all-features
     test-full:

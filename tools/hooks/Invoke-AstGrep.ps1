@@ -8,8 +8,15 @@ param(
     [Parameter()]
     [switch]$Staged,
 
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Paths
+    [Parameter()]
+    [switch]$Changed,
+
+    [Parameter()]
+    [string[]]$Paths,
+
+    [Parameter()]
+    [ValidateSet('full', 'safe-gate')]
+    [string]$Profile = 'full'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +40,16 @@ function Get-StagedRustPaths {
     )
 }
 
+function Get-ChangedRustPaths {
+    $gitArgs = @('diff', '--name-only', '--diff-filter=ACMR', 'HEAD', '--', '*.rs')
+    return @(
+        & git @gitArgs |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $repoRoot $_) }
+    )
+}
+
 Push-Location $repoRoot
 try {
     if (-not (Get-Command sg -ErrorAction SilentlyContinue)) {
@@ -44,6 +61,12 @@ try {
         $targetPaths = Get-StagedRustPaths
         if ($targetPaths.Count -eq 0) {
             Write-Host 'No staged Rust files detected; skipping ast-grep.'
+            exit 0
+        }
+    } elseif ($Changed) {
+        $targetPaths = Get-ChangedRustPaths
+        if ($targetPaths.Count -eq 0) {
+            Write-Host 'No changed Rust files detected; skipping ast-grep.'
             exit 0
         }
     } elseif ($Paths -and $Paths.Count -gt 0) {
@@ -64,6 +87,16 @@ try {
         $scanArgs += @(
             '--update-all',
             '--filter', 'prefer-expect-over-allow|remove-redundant-format'
+        )
+    } elseif ($Profile -eq 'safe-gate') {
+        # Build/CI gate profile: block only on rules we can enforce today without tripping the
+        # broader unwrap/panic backlog that still needs targeted cleanup.
+        $scanArgs += @(
+            '--filter', 'prefer-expect-over-allow|remove-redundant-format|avoid-static-mut|dbg-macro-in-production',
+            '--error=prefer-expect-over-allow',
+            '--error=remove-redundant-format',
+            '--error=avoid-static-mut',
+            '--error=dbg-macro-in-production'
         )
     }
 

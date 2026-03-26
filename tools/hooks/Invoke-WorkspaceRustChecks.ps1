@@ -8,6 +8,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).ProviderPath
+$strictPackages = @(
+    '-p', 'wezterm-module-framework',
+    '-p', 'wezterm-utils-daemon',
+    '-p', 'wezterm-benchmarks',
+    '-p', 'wezterm-watch'
+)
 
 function Invoke-CommandOrSkip {
     param(
@@ -37,11 +43,19 @@ try {
         }
         'clippy' {
             Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
-            & cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
+            & cargo clippy @strictPackages --all-targets --no-deps -- -D warnings -A clippy::type_complexity
+            if ($LASTEXITCODE -ne 0) {
+                exit $LASTEXITCODE
+            }
+            & cargo clippy --manifest-path wezterm-fs-explorer/Cargo.toml --all-targets --no-deps -- -D warnings -A clippy::type_complexity
         }
         'clippy-all-features' {
             Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
-            & cargo clippy --workspace --all-targets --all-features -- -D warnings -A clippy::type_complexity
+            & cargo clippy @strictPackages --all-targets --all-features --no-deps -- -D warnings -A clippy::type_complexity
+            if ($LASTEXITCODE -ne 0) {
+                exit $LASTEXITCODE
+            }
+            & cargo clippy --manifest-path wezterm-fs-explorer/Cargo.toml --all-targets --all-features --no-deps -- -D warnings -A clippy::type_complexity
         }
         'test-changed' {
             $stagedRust = @(

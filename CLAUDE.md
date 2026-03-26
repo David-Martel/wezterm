@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 WezTerm is a GPU-accelerated cross-platform terminal emulator and multiplexer written in Rust. It uses wgpu for rendering, supports terminal multiplexing (panes, tabs, windows), includes an SSH client with native tabs, and features Lua configuration with hot-reloading.
 
+### Fork Policy
+
+This is a **downstream fork** of `wezterm/wezterm` in David-Martel's GitHub account. It pulls meaningful updates from upstream but **never commits back**. The `upstream` remote is configured as fetch-only (push URL disabled). `gh` defaults to `David-Martel/wezterm`. No agent (Claude, Codex, Jules, Gemini) should create PRs, push, or contribute changes to `wezterm/wezterm`.
+
 ## Build and Development Commands
 
 ### Building the Project
@@ -60,27 +64,30 @@ cargo test --all
 ```bash
 # Format + lint (Windows: use Just — routes through tools/hooks/ wrappers)
 just fmt               # cargo fmt --all
-just clippy            # clippy via Invoke-WorkspaceRustChecks.ps1
-just lint-ast-grep     # ast-grep scan on custom crates
+just clippy            # strict clippy lane for custom crates + fs-explorer
+just clippy-workspace  # explicit full-workspace lint; legacy warning debt still exists
+just lint-ast-grep     # full ast-grep scan on custom crates / backlog surfacing
+just lint-ast-grep-gate # changed-file safe gate used by build/CI paths
 just ast-grep-fix-safe # auto-fix safe rules (prefer-expect-over-allow, remove-redundant-format)
 just quick-check       # check + fmt + ast-grep + clippy (runs before every build)
 
 # ast-grep (Microsoft Rust Guidelines enforcement)
-sg scan                            # Full repo scan via sgconfig.yml
-sg scan wezterm-utils-daemon/src/  # Scan specific crate
-sg scan --update-all               # Apply safe auto-fixes
+sg scan -c sgconfig.yml                            # Config-based scan
+sg scan -c sgconfig.yml wezterm-utils-daemon/src/  # Scan specific crate
+sg scan -c sgconfig.yml --update-all --filter 'prefer-expect-over-allow|remove-redundant-format'  # Safe auto-fix only
 
 # Direct cargo (any platform)
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
+cargo clippy --workspace --all-targets --no-deps -- -D warnings -A clippy::type_complexity
 ```
 
-**ast-grep Rules** (`rules/rust/`): 13 rules enforcing M-PANIC-IS-STOP, M-UNSAFE, M-AVOID-STATICS, M-LINT-OVERRIDE-EXPECT. Pre-commit hook blocks on P0 violations. Safe auto-fix available for `prefer-expect-over-allow` and `remove-redundant-format`.
+**ast-grep Rules** (`rules/rust/`): config-based enforcement for Microsoft Rust Guidelines. Safe auto-fix is intentionally limited to syntax-preserving rewrites such as `prefer-expect-over-allow` and `remove-redundant-format`. The broader unwrap/panic backlog is still tracked in [TODO.md](./TODO.md), so treat full-scan failures as useful debt discovery rather than a hook wiring failure.
 
 **Git Hooks** (two systems available):
 - **lefthook** (preferred): `lefthook.yml` — pre-commit (fmt, ast-grep, clippy) + pre-push (full tests)
 - **pre-commit**: `.pre-commit-config.yaml` — same hooks via `pre-commit install`
 - Hook scripts: `tools/hooks/Invoke-AstGrep.ps1`, `tools/hooks/Invoke-WorkspaceRustChecks.ps1`
+- Machine note: this workstation currently uses a global `core.hooksPath=~/.git-hooks`; do not reset or override that globally without coordinating through [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) and [TODO.md](./TODO.md).
 
 ### Documentation
 
@@ -334,6 +341,12 @@ All plans consolidated under `docs/`:
 - **[docs/design/](./docs/design/)** — Architecture documents (AI module design)
 - **[JULES.md](./JULES.md)** — Jules (Google) async agent: CI/CD PR review, test generation, parallel exploration
 
+Prompt/guidance files that should stay aligned with the current workflow:
+- [AGENTS.md](./AGENTS.md)
+- [CLAUDE.md](./CLAUDE.md)
+- [.claude/CLAUDE.md](./.claude/CLAUDE.md)
+- [JULES.md](./JULES.md)
+
 **AI Assistant Module** ([docs/design/WEZTERM_AI_MODULE_DESIGN.md](./docs/design/WEZTERM_AI_MODULE_DESIGN.md)):
 - Design spec for local LLM-based AI assistant integration
 - `wezterm-module-framework/` crate provides the plugin/module infrastructure
@@ -354,14 +367,15 @@ jules new --repo David-Martel/wezterm "Review PR #XXXX for Rust quality"
 # Generate tests
 jules new "Write integration tests for wezterm-utils-daemon/src/client.rs"
 
-# Pull and apply results
-jules remote pull --session <ID> --apply
+# Pull results for review first
+jules remote pull --session <ID>
 
 # Check session status
 jules remote list --session
 ```
 
 **Jules config**: `.jules` in repo root defines project context, guidelines, and quality gates.
+**Current practice**: Jules findings should be posted to the direct bus thread, converted into concrete [TODO.md](./TODO.md) items when actionable, and validated locally with `cargo check`, `cargo nextest`, `sg scan -c sgconfig.yml`, and clippy before any patch is applied. See [JULES.md](./JULES.md) and [TODO.md](./TODO.md) Tier 6 for active sessions.
 
 ## Important Development Notes
 
@@ -408,6 +422,9 @@ Multiple AI agents may work on this repo concurrently. Use the **Agent Bus** (`h
 
 **Protocol**:
 ```bash
+# Health check the service before a long coordination wave
+curl.exe -s http://localhost:8400/health
+
 # Announce presence
 agent-bus-http.exe send --from-agent <agent-id> --to-agent all --topic status \
   --body "<message>" --tag "repo:wezterm"
@@ -436,11 +453,14 @@ agent-bus.exe serve --transport stdio
 - `agent-bus-http.exe read-direct --agent-a codex --agent-b claude --limit 20 --encoding toon` before shared edits
 - `agent-bus-http.exe compact-context --max-tokens 2000 --since-minutes 120` before resuming long sessions
 - `agent-bus-http.exe claim <file> --agent claude --reason "<why>"` before editing shared files
+- `agent-bus-http.exe session-summary --session session:wezterm-wave --encoding compact` when closing a long tranche
+- `agent-bus-http.exe post-direct --from-agent claude --to-agent codex --topic status --body "<summary>"` for high-signal handoffs
 
 **Don't:**
 - `agent-bus-http.exe read --since-minutes 1440` without narrowing (floods context)
 - Use `compact-context` as fully reliable when PostgreSQL `jsonb` warning appears (treat as degraded)
 - Use `agent-bus-http.exe` for MCP stdio (use `agent-bus.exe serve --transport stdio` instead)
+- Treat `watch --encoding toon` as the canonical source of record in PowerShell; use it as a live probe only
 - Edit files under `~/.config/wezterm/` without exclusive lock (triggers reload storm)
 - Run `cargo build` on default `target/` without checking for active locks
 
@@ -448,9 +468,12 @@ agent-bus.exe serve --transport stdio
 - Writing files inside `~/.config/wezterm/` triggers WezTerm's file watcher → config reload loop. Panel state uses `~/.local/state/wezterm-utils/` instead.
 - `Cargo.lock` is exclusive — concurrent `cargo update` corrupts it.
 - DLLs (conpty.dll, libEGL.dll, libGLESv2.dll) must be alongside wezterm.exe in `~/bin/` for GUI to launch.
+- Heavy Rust builds/tests should default to private `CARGO_TARGET_DIR` values; reserve repo-default `target/` for explicitly coordinated waves.
 
 **References**:
 - [AGENTS.md](./AGENTS.md) — Agent-specific guidelines, coordination examples, positive/negative patterns
 - [RESOURCE_COORDINATION.md](./RESOURCE_COORDINATION.md) — Full shared resource protocol
 - [AGENT_COORDINATION.md](./AGENT_COORDINATION.md) — Cross-agent IPC protocol (bus CLI, channels, presence, TOON encoding)
 - [JULES.md](./JULES.md) — Jules async agent for CI/CD reviews, test generation, security audits
+- `~/.agents/rust-guidelines.txt` — Microsoft Pragmatic Rust Guidelines (canonical local copy)
+- `~/.agents/rust-development-guide.md` — local Rust workflow and coordination guide

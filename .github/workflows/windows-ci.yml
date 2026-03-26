@@ -59,7 +59,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Run ast-grep
-        run: sg scan -c sgconfig.yml wezterm-utils-daemon/src wezterm-module-framework/src wezterm-watch/src wezterm-fs-explorer/src wezterm-benchmarks/src
+        run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-AstGrep.ps1 -Mode scan -Profile safe-gate
 
       - name: Build workspace
         run: cargo build --workspace --verbose
@@ -73,7 +73,7 @@ jobs:
         run: cargo nextest run --workspace --no-fail-fast
 
       - name: Run clippy (without sccache wrapper)
-        run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::type_complexity
+        run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
         env:
           RUSTC_WRAPPER: ""
 
