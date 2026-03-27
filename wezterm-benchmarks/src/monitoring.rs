@@ -7,9 +7,8 @@ use prometheus::{
     Registry, TextEncoder,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 use systemstat::{Platform, System};
 use tokio::sync::mpsc;
 
@@ -26,6 +25,12 @@ pub struct MetricsCollector {
     active_connections: Arc<Gauge>,
 }
 
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsCollector {
     pub fn new() -> Self {
         let registry = Registry::new();
@@ -40,19 +45,19 @@ impl MetricsCollector {
             Opts::new("file_operations_total", "Total file operations"),
             &["operation", "status"],
         )
-        .unwrap();
+        .expect("failed to create file_ops counter");
 
         let memory_usage = GaugeVec::new(
             Opts::new("memory_usage_bytes", "Memory usage in bytes"),
             &["component"],
         )
-        .unwrap();
+        .expect("failed to create memory_usage gauge");
 
         let cpu_usage = GaugeVec::new(
             Opts::new("cpu_usage_percent", "CPU usage percentage"),
             &["component"],
         )
-        .unwrap();
+        .expect("failed to create cpu_usage gauge");
 
         let startup_time = Histogram::with_opts(HistogramOpts::new(
             "startup_time_seconds",
@@ -71,18 +76,30 @@ impl MetricsCollector {
                 .expect("failed to create active_connections gauge");
 
         // Register all metrics
-        registry.register(Box::new(ipc_latency.clone())).unwrap();
-        registry.register(Box::new(file_ops.clone())).unwrap();
-        registry.register(Box::new(memory_usage.clone())).unwrap();
-        registry.register(Box::new(cpu_usage.clone())).unwrap();
-        registry.register(Box::new(startup_time.clone())).unwrap();
-        registry.register(Box::new(git_cache_hits.clone())).unwrap();
+        registry
+            .register(Box::new(ipc_latency.clone()))
+            .expect("register ipc_latency metric");
+        registry
+            .register(Box::new(file_ops.clone()))
+            .expect("register file_ops metric");
+        registry
+            .register(Box::new(memory_usage.clone()))
+            .expect("register memory_usage metric");
+        registry
+            .register(Box::new(cpu_usage.clone()))
+            .expect("register cpu_usage metric");
+        registry
+            .register(Box::new(startup_time.clone()))
+            .expect("register startup_time metric");
+        registry
+            .register(Box::new(git_cache_hits.clone()))
+            .expect("register git_cache_hits metric");
         registry
             .register(Box::new(git_cache_misses.clone()))
-            .unwrap();
+            .expect("register git_cache_misses metric");
         registry
             .register(Box::new(active_connections.clone()))
-            .unwrap();
+            .expect("register active_connections metric");
 
         Self {
             registry: Arc::new(registry),
@@ -136,8 +153,10 @@ impl MetricsCollector {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
         let mut buffer = Vec::new();
-        encoder.encode(&metric_families, &mut buffer).unwrap();
-        String::from_utf8(buffer).unwrap()
+        encoder
+            .encode(&metric_families, &mut buffer)
+            .expect("encode prometheus metrics to text format");
+        String::from_utf8(buffer).expect("prometheus metric output is valid UTF-8")
     }
 }
 
@@ -283,6 +302,12 @@ pub enum AlertSeverity {
     Critical,
 }
 
+impl Default for AlertSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AlertSystem {
     pub fn new() -> Self {
         Self {
@@ -392,6 +417,12 @@ pub struct ReportGenerator {
     max_history: usize,
 }
 
+impl Default for ReportGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReportGenerator {
     pub fn new() -> Self {
         Self {
@@ -427,9 +458,9 @@ impl ReportGenerator {
         let mut memory_usages: Vec<f64> = history.iter().map(|m| m.memory_usage_mb).collect();
         let mut cpu_usages: Vec<f64> = history.iter().map(|m| m.cpu_usage_percent).collect();
 
-        ipc_latencies.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        memory_usages.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        cpu_usages.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        ipc_latencies.sort_by(|a, b| a.partial_cmp(b).expect("ipc latency values are finite"));
+        memory_usages.sort_by(|a, b| a.partial_cmp(b).expect("memory usage values are finite"));
+        cpu_usages.sort_by(|a, b| a.partial_cmp(b).expect("cpu usage values are finite"));
 
         report.ipc_latency_avg = average(&ipc_latencies);
         report.ipc_latency_p50 = percentile(&ipc_latencies, 0.5);

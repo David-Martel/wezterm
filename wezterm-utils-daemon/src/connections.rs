@@ -71,13 +71,13 @@ impl Connection {
         self.update_activity();
     }
 
-    #[expect(dead_code, reason = "reserved for event subscription protocol")]
+    #[allow(dead_code)] // used in integration tests
     pub fn subscribe(&self, subscriptions: Vec<EventSubscription>) {
         self.subscriptions.write().extend(subscriptions);
         self.update_activity();
     }
 
-    #[expect(dead_code, reason = "reserved for event subscription protocol")]
+    #[allow(dead_code)] // used in integration tests
     pub fn unsubscribe(&self, event_types: &[String]) {
         self.subscriptions
             .write()
@@ -356,7 +356,9 @@ mod tests {
         let conn = Connection::new(tx);
         let id = conn.id.clone();
 
-        let added = manager.add_connection(conn).unwrap();
+        let _added = manager
+            .add_connection(conn)
+            .expect("add connection to manager in test");
         assert_eq!(manager.get_active_count(), 1);
 
         assert!(manager.get_connection(&id).is_some());
@@ -381,7 +383,7 @@ mod tests {
     #[test]
     fn test_connection_subscription() {
         let (tx, _) = mpsc::unbounded_channel();
-        let mut conn = Connection::new(tx);
+        let conn = Connection::new(tx);
 
         conn.subscribe(vec![EventSubscription {
             event_type: "test.event".to_string(),

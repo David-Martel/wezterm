@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start report generation
     if let Some(report_interval) = args.report_interval {
         let report_gen = report_generator.clone();
-        let monitor = monitor.clone();
+        let _monitor = monitor.clone();
 
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(report_interval));

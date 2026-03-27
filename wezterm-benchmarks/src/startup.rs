@@ -2,9 +2,8 @@
 
 use dashmap::DashMap;
 use futures::future::join_all;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -95,6 +94,12 @@ struct NonCriticalComponents {
     telemetry: String,
 }
 
+impl Default for DeferredInitializer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DeferredInitializer {
     pub fn new() -> Self {
         Self {
@@ -131,7 +136,8 @@ impl DeferredInitializer {
     }
 
     pub async fn wait_for_full_init(&self) {
-        if let Some(handle) = self.init_handle.lock().take() {
+        let handle = self.init_handle.lock().take();
+        if let Some(handle) = handle {
             let _ = handle.await;
         }
     }
@@ -156,6 +162,12 @@ struct Phase {
     name: String,
     duration: Duration,
     parallel: bool,
+}
+
+impl Default for StartupOptimizer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StartupOptimizer {
@@ -233,6 +245,12 @@ pub struct ConfigCache {
     parsed_cache: DashMap<String, Arc<dyn std::any::Any + Send + Sync>>,
 }
 
+impl Default for ConfigCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConfigCache {
     pub fn new() -> Self {
         Self {
@@ -284,6 +302,12 @@ pub struct ParallelDependencyLoader {
 struct Dependency {
     name: String,
     loader: Arc<dyn Fn() -> Vec<u8> + Send + Sync>,
+}
+
+impl Default for ParallelDependencyLoader {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ParallelDependencyLoader {
@@ -338,6 +362,12 @@ struct StartupMetric {
     duration: Duration,
     config_size: usize,
     dependency_count: usize,
+}
+
+impl Default for StartupPredictor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StartupPredictor {

@@ -352,15 +352,15 @@ impl ChildKiller for std::process::Child {
             // give the process a bit of a grace period to shutdown or do whatever
             // it is doing in its signal handler befre we proceed with the
             // full on kill.
-            for attempt in 0..5 {
-                if attempt > 0 {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
+            let start = std::time::Instant::now();
+            let timeout = std::time::Duration::from_millis(250);
 
+            while start.elapsed() < timeout {
                 if let Ok(Some(_)) = self.try_wait() {
                     // It completed, so report success!
                     return Ok(());
                 }
+                std::thread::yield_now();
             }
 
             // it's still alive after a grace period, so proceed with a kill
@@ -402,3 +402,39 @@ pub fn native_pty_system() -> Box<dyn PtySystem + Send> {
 pub type NativePtySystem = unix::UnixPtySystem;
 #[cfg(windows)]
 pub type NativePtySystem = win::conpty::ConPtySystem;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[cfg(unix)]
+    fn test_child_killer_timeout_does_not_block() {
+        use super::*;
+        let mut cmd = Command::new("bash");
+        cmd.arg("-c");
+        // Trap SIGHUP so it doesn't die immediately, wait for a while
+        cmd.arg("trap '' HUP; sleep 10");
+        let mut child = cmd.spawn().expect("spawn bash for kill test");
+
+        // Give it a moment to start and set the trap
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let start = std::time::Instant::now();
+
+        let result = ChildKiller::kill(&mut child);
+
+        let elapsed = start.elapsed();
+
+        assert!(result.is_ok());
+        // Should take roughly 250ms (the grace period) before it proceeds to full kill
+        assert!(
+            elapsed.as_millis() >= 200,
+            "Should wait for grace period, took {}ms",
+            elapsed.as_millis()
+        );
+        assert!(
+            elapsed.as_millis() < 2000,
+            "Should not block for too long, took {}ms",
+            elapsed.as_millis()
+        );
+    }
+}

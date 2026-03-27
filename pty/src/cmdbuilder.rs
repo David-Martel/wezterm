@@ -157,35 +157,33 @@ fn get_base_env() -> BTreeMap<OsString, EnvEntry> {
         }
 
         if let Ok(sys_env) = RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment") {
-            for res in sys_env.enum_values() {
-                if let Ok((name, value)) = res {
-                    if let Ok(value) = reg_value_to_string(&value) {
-                        // Merge the system and user paths together
-                        let value = if name.eq_ignore_ascii_case("path") {
-                            match env.get(&EnvEntry::map_key(name.clone().into())) {
-                                Some(entry) => {
-                                    let mut result = OsString::new();
-                                    result.push(&entry.value);
-                                    result.push(";");
-                                    result.push(&value);
-                                    result
-                                }
-                                None => value,
+            for (name, value) in sys_env.enum_values().flatten() {
+                if let Ok(value) = reg_value_to_string(&value) {
+                    // Merge the system and user paths together
+                    let value = if name.eq_ignore_ascii_case("path") {
+                        match env.get(&EnvEntry::map_key(name.clone().into())) {
+                            Some(entry) => {
+                                let mut result = OsString::new();
+                                result.push(&entry.value);
+                                result.push(";");
+                                result.push(&value);
+                                result
                             }
-                        } else {
-                            value
-                        };
+                            None => value,
+                        }
+                    } else {
+                        value
+                    };
 
-                        log::trace!("adding USER env: {:?} {:?}", name, value);
-                        env.insert(
-                            EnvEntry::map_key(name.clone().into()),
-                            EnvEntry {
-                                is_from_base_env: true,
-                                preferred_key: name.into(),
-                                value,
-                            },
-                        );
-                    }
+                    log::trace!("adding USER env: {:?} {:?}", name, value);
+                    env.insert(
+                        EnvEntry::map_key(name.clone().into()),
+                        EnvEntry {
+                            is_from_base_env: true,
+                            preferred_key: name.into(),
+                            value,
+                        },
+                    );
                 }
             }
         }
@@ -266,11 +264,14 @@ impl CommandBuilder {
     }
 
     /// Append an argument to the current command line.
-    /// Will panic if called on a builder created via `new_default_prog`.
+    ///
+    /// # Panics
+    /// Panics if called on a builder created via `new_default_prog`.
     pub fn arg<S: AsRef<OsStr>>(&mut self, arg: S) {
-        if self.is_default_prog() {
-            panic!("attempted to add args to a default_prog builder");
-        }
+        assert!(
+            !self.is_default_prog(),
+            "attempted to add args to a default_prog builder"
+        );
         self.args.push(arg.as_ref().to_owned());
     }
 
@@ -280,10 +281,13 @@ impl CommandBuilder {
     /// of the underlying default prog when merging together supplemental
     /// env and cwd information.
     /// You will not typically use this method in your own code.
+    /// # Panics
+    /// Panics if called on a builder that is not a `default_prog` builder.
     pub fn replace_default_prog(&mut self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) {
-        if !self.is_default_prog() {
-            panic!("attempted to replace_default_prog on a non-default_prog builder");
-        }
+        assert!(
+            self.is_default_prog(),
+            "attempted to replace_default_prog on a non-default_prog builder"
+        );
 
         for arg in args {
             self.args.push(arg.as_ref().to_owned());
@@ -786,14 +790,14 @@ mod tests {
     fn test_env() {
         let mut cmd = CommandBuilder::new("dummy");
         let package_authors = cmd.get_env("CARGO_PKG_AUTHORS");
-        println!("package_authors: {:?}", package_authors);
+        log::debug!("package_authors: {:?}", package_authors);
         assert!(package_authors == Some(OsStr::new("Wez Furlong")));
 
         cmd.env("foo key", "foo value");
         cmd.env("bar key", "bar value");
 
         let iterated_envs = cmd.iter_extra_env_as_str().collect::<Vec<_>>();
-        println!("iterated_envs: {:?}", iterated_envs);
+        log::debug!("iterated_envs: {:?}", iterated_envs);
         assert!(iterated_envs == vec![("bar key", "bar value"), ("foo key", "foo value")]);
 
         {
@@ -801,7 +805,7 @@ mod tests {
             cmd.env_remove("foo key");
 
             let iterated_envs = cmd.iter_extra_env_as_str().collect::<Vec<_>>();
-            println!("iterated_envs: {:?}", iterated_envs);
+            log::debug!("iterated_envs: {:?}", iterated_envs);
             assert!(iterated_envs == vec![("bar key", "bar value")]);
         }
 
@@ -810,7 +814,7 @@ mod tests {
             cmd.env_remove("bar key");
 
             let iterated_envs = cmd.iter_extra_env_as_str().collect::<Vec<_>>();
-            println!("iterated_envs: {:?}", iterated_envs);
+            log::debug!("iterated_envs: {:?}", iterated_envs);
             assert!(iterated_envs == vec![("foo key", "foo value")]);
         }
 
@@ -819,7 +823,7 @@ mod tests {
             cmd.env_clear();
 
             let iterated_envs = cmd.iter_extra_env_as_str().collect::<Vec<_>>();
-            println!("iterated_envs: {:?}", iterated_envs);
+            log::debug!("iterated_envs: {:?}", iterated_envs);
             assert!(iterated_envs.is_empty());
         }
     }

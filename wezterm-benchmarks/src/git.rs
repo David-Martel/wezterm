@@ -1,13 +1,10 @@
 //! Optimized Git operations with caching and parallel processing
 
-use cached::proc_macro::cached;
 use dashmap::DashMap;
-use git2::{DiffOptions, Oid, Repository, Status, StatusOptions};
+use git2::{DiffOptions, Repository, Status, StatusOptions};
 use lru::LruCache;
 use parking_lot::Mutex;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -96,8 +93,12 @@ impl GitStatusCache {
         Self {
             cache: Arc::new(DashMap::new()),
             diff_cache: Arc::new(DashMap::new()),
-            log_cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap()))),
-            blame_cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap()))),
+            log_cache: Arc::new(Mutex::new(LruCache::new(
+                NonZeroUsize::new(100).expect("100 is non-zero"),
+            ))),
+            blame_cache: Arc::new(Mutex::new(LruCache::new(
+                NonZeroUsize::new(100).expect("100 is non-zero"),
+            ))),
             ttl,
         }
     }
@@ -353,6 +354,12 @@ impl GitOperations {
 /// Parallel Git status computation
 pub struct ParallelGitStatus;
 
+impl Default for ParallelGitStatus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ParallelGitStatus {
     pub fn new() -> Self {
         Self
@@ -400,7 +407,7 @@ impl ParallelGitStatus {
             Ok(info)
         })
         .await
-        .unwrap()
+        .expect("join spawn_blocking task for parallel git status")
     }
 }
 
@@ -435,8 +442,8 @@ mod tests {
     use tempfile::TempDir;
 
     fn create_test_repo() -> (TempDir, Repository) {
-        let temp_dir = TempDir::new().unwrap();
-        let repo = Repository::init(temp_dir.path()).unwrap();
+        let temp_dir = TempDir::new().expect("create temp dir for test repo");
+        let repo = Repository::init(temp_dir.path()).expect("init git repository in temp dir");
         (temp_dir, repo)
     }
 
@@ -446,10 +453,14 @@ mod tests {
         let cache = GitStatusCache::new(Duration::from_secs(60));
 
         // First call should compute
-        let status1 = cache.get_status(temp_dir.path()).unwrap();
+        let status1 = cache
+            .get_status(temp_dir.path())
+            .expect("get git status (cache miss)");
 
         // Second call should use cache
-        let status2 = cache.get_status(temp_dir.path()).unwrap();
+        let status2 = cache
+            .get_status(temp_dir.path())
+            .expect("get git status (cache hit)");
 
         assert_eq!(status1.modified.len(), status2.modified.len());
     }
@@ -459,7 +470,10 @@ mod tests {
         let (temp_dir, _repo) = create_test_repo();
         let parallel = ParallelGitStatus::new();
 
-        let status = parallel.get_status(temp_dir.path()).await.unwrap();
+        let status = parallel
+            .get_status(temp_dir.path())
+            .await
+            .expect("get parallel git status in test");
         assert!(status.modified.is_empty());
     }
 }

@@ -22,6 +22,10 @@ use winapi::um::winbase::{
 use winapi::um::wincon::COORD;
 use winapi::um::winnt::HANDLE;
 
+#[expect(
+    clippy::upper_case_acronyms,
+    reason = "HPCON is the Win32 API name for pseudo-console handles"
+)]
 pub type HPCON = HANDLE;
 
 pub const PSUEDOCONSOLE_INHERIT_CURSOR: DWORD = 0x1;

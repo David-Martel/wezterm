@@ -1,5 +1,4 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use walkdir::WalkDir;
@@ -8,7 +7,7 @@ use wezterm_benchmarks::fs::{
 };
 
 fn create_test_directory(num_files: usize, depth: usize) -> TempDir {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("create temp dir for file benchmark");
     let base_path = temp_dir.path();
 
     // Create a directory structure with the specified number of files and depth
@@ -23,14 +22,14 @@ fn create_test_directory(num_files: usize, depth: usize) -> TempDir {
         std::fs::create_dir_all(&path).ok();
 
         let file_path = path.join(format!("file_{}.txt", i));
-        std::fs::write(&file_path, format!("Content of file {}", i)).unwrap();
+        std::fs::write(&file_path, format!("Content of file {}", i)).expect("write benchmark file");
     }
 
     temp_dir
 }
 
 fn bench_directory_scanning(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for directory scanning benchmark");
 
     let mut group = c.benchmark_group("directory_scanning");
     group.sample_size(10);
@@ -57,7 +56,10 @@ fn bench_directory_scanning(c: &mut Criterion) {
             |b, path| {
                 b.to_async(&rt).iter(|| async {
                     let scanner = ParallelScanner::new();
-                    let entries = scanner.scan(path).await.unwrap();
+                    let entries = scanner
+                        .scan(path)
+                        .await
+                        .expect("parallel scan of benchmark directory");
                     black_box(entries.len())
                 });
             },
@@ -80,7 +82,7 @@ fn bench_directory_scanning(c: &mut Criterion) {
 }
 
 fn bench_incremental_updates(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for incremental update benchmark");
 
     let mut group = c.benchmark_group("incremental_updates");
 
@@ -90,7 +92,10 @@ fn bench_incremental_updates(c: &mut Criterion) {
     group.bench_function("full_refresh", |b| {
         b.to_async(&rt).iter(|| async {
             let scanner = DirectoryScanner::new();
-            let entries = scanner.scan(&path).await.unwrap();
+            let entries = scanner
+                .scan(&path)
+                .await
+                .expect("full directory scan for refresh benchmark");
             black_box(entries)
         });
     });
@@ -98,12 +103,17 @@ fn bench_incremental_updates(c: &mut Criterion) {
     group.bench_function("incremental_update", |b| {
         let scanner = rt.block_on(async {
             let s = IncrementalScanner::new();
-            s.initial_scan(&path).await.unwrap();
+            s.initial_scan(&path)
+                .await
+                .expect("initial scan for incremental update benchmark");
             s
         });
 
         b.to_async(&rt).iter(|| async {
-            let changes = scanner.get_changes(&path).await.unwrap();
+            let changes = scanner
+                .get_changes(&path)
+                .await
+                .expect("get incremental directory changes");
             black_box(changes)
         });
     });
@@ -112,11 +122,11 @@ fn bench_incremental_updates(c: &mut Criterion) {
 }
 
 fn bench_file_reading(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for file reading benchmark");
 
     let mut group = c.benchmark_group("file_reading");
 
-    let test_dir = TempDir::new().unwrap();
+    let test_dir = TempDir::new().expect("create temp dir for file reading benchmark");
 
     // Create files of different sizes
     let sizes = vec![
@@ -129,7 +139,7 @@ fn bench_file_reading(c: &mut Criterion) {
     for (size, label) in sizes {
         let file_path = test_dir.path().join(format!("test_{}.bin", label));
         let data = vec![0u8; size];
-        std::fs::write(&file_path, &data).unwrap();
+        std::fs::write(&file_path, &data).expect("write benchmark file of specified size");
 
         group.throughput(Throughput::Bytes(size as u64));
 
@@ -138,7 +148,7 @@ fn bench_file_reading(c: &mut Criterion) {
             &file_path,
             |b, path| {
                 b.iter(|| {
-                    let content = std::fs::read(path).unwrap();
+                    let content = std::fs::read(path).expect("read benchmark file with std::fs");
                     black_box(content)
                 });
             },
@@ -149,7 +159,9 @@ fn bench_file_reading(c: &mut Criterion) {
             &file_path,
             |b, path| {
                 b.to_async(&rt).iter(|| async {
-                    let content = tokio::fs::read(path).await.unwrap();
+                    let content = tokio::fs::read(path)
+                        .await
+                        .expect("read benchmark file with tokio::fs");
                     black_box(content)
                 });
             },
@@ -160,8 +172,9 @@ fn bench_file_reading(c: &mut Criterion) {
             &file_path,
             |b, path| {
                 b.iter(|| {
-                    let reader = MemoryMappedReader::new(path).unwrap();
-                    let content = reader.read_all();
+                    let reader =
+                        MemoryMappedReader::new(path).expect("open memory-mapped benchmark file");
+                    let content = reader.read_all().len();
                     black_box(content)
                 });
             },
@@ -173,7 +186,7 @@ fn bench_file_reading(c: &mut Criterion) {
             |b, path| {
                 let cache = FileCache::new(100);
                 b.iter(|| {
-                    let content = cache.read(path).unwrap();
+                    let content = cache.read(path).expect("read benchmark file from cache");
                     black_box(content)
                 });
             },
@@ -184,7 +197,7 @@ fn bench_file_reading(c: &mut Criterion) {
 }
 
 fn bench_file_watching(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for file watching benchmark");
 
     let mut group = c.benchmark_group("file_watching");
     group.sample_size(10);
@@ -195,14 +208,17 @@ fn bench_file_watching(c: &mut Criterion) {
     group.bench_function("event_processing", |b| {
         b.to_async(&rt).iter(|| async {
             let watcher = wezterm_benchmarks::fs::Watcher::new();
-            watcher.watch(&path).await.unwrap();
+            watcher
+                .watch(&path)
+                .await
+                .expect("start file watcher for benchmark");
 
             // Simulate file changes
             for i in 0..10 {
                 let file = path.join(format!("change_{}.txt", i));
                 tokio::fs::write(&file, format!("change {}", i))
                     .await
-                    .unwrap();
+                    .expect("write simulated file change in benchmark");
             }
 
             // Process events
@@ -215,14 +231,17 @@ fn bench_file_watching(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let watcher =
                 wezterm_benchmarks::fs::DebouncedWatcher::new(std::time::Duration::from_millis(50));
-            watcher.watch(&path).await.unwrap();
+            watcher
+                .watch(&path)
+                .await
+                .expect("start debounced file watcher for benchmark");
 
             // Simulate rapid file changes
             for i in 0..50 {
                 let file = path.join(format!("rapid_{}.txt", i));
                 tokio::fs::write(&file, format!("change {}", i))
                     .await
-                    .unwrap();
+                    .expect("write simulated rapid file change in benchmark");
             }
 
             // Wait for debouncing

@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_cli_parsing() {
-        let cli = Cli::parse_from(&["wezterm-utils-daemon", "start"]);
+        let cli = Cli::parse_from(["wezterm-utils-daemon", "start"]);
         assert!(matches!(cli.command, Some(Commands::Start { .. })));
     }
 

@@ -42,7 +42,7 @@ try {
             & cargo fmt --all
         }
         'clippy' {
-            Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
+            $env:RUSTC_WRAPPER = ''  # Override global cargo config sccache setting
             & cargo clippy @strictPackages --all-targets --no-deps -- -D warnings -A clippy::type_complexity
             if ($LASTEXITCODE -ne 0) {
                 exit $LASTEXITCODE
@@ -50,7 +50,7 @@ try {
             & cargo clippy --manifest-path wezterm-fs-explorer/Cargo.toml --all-targets --no-deps -- -D warnings -A clippy::type_complexity
         }
         'clippy-all-features' {
-            Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
+            $env:RUSTC_WRAPPER = ''  # Override global cargo config sccache setting
             & cargo clippy @strictPackages --all-targets --all-features --no-deps -- -D warnings -A clippy::type_complexity
             if ($LASTEXITCODE -ne 0) {
                 exit $LASTEXITCODE

@@ -357,8 +357,6 @@ impl MessageRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connections::Connection;
-    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_router_creation() {
@@ -375,7 +373,9 @@ mod tests {
 
         let request = JsonRpcRequest::new("daemon/ping", None, Some(RequestId::Number(1)));
 
-        let method = router.parse_daemon_method(&request).unwrap();
+        let method = router
+            .parse_daemon_method(&request)
+            .expect("parse daemon/ping method in test");
         assert!(matches!(method, DaemonMethod::Ping));
     }
 }

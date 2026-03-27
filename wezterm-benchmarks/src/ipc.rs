@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 /// IPC client with multiple serialization formats
 pub struct IpcClient {
@@ -143,7 +143,7 @@ impl Connection {
 
     async fn send_receive(
         &self,
-        method: &str,
+        _method: &str,
         payload: Vec<u8>,
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         // Mock implementation for benchmarking
@@ -152,7 +152,7 @@ impl Connection {
 
     async fn send_receive_bytes(
         &self,
-        method: &str,
+        _method: &str,
         data: Bytes,
     ) -> Result<Bytes, Box<dyn std::error::Error>> {
         // Zero-copy implementation
@@ -184,7 +184,9 @@ impl ConnectionPool {
         }
 
         // Create new connection
-        let client = IpcClient::connect_msgpack().await.unwrap();
+        let client = IpcClient::connect_msgpack()
+            .await
+            .expect("connect msgpack IPC client for pool");
         let client_arc = Arc::new(client);
 
         // Check if we need to evict
@@ -286,7 +288,7 @@ impl MessageBatcher {
         method: &str,
         params: T,
     ) -> oneshot::Receiver<Vec<u8>> {
-        let payload = serde_json::to_vec(&params).unwrap();
+        let payload = serde_json::to_vec(&params).expect("serialize batcher params to JSON bytes");
         let (tx, rx) = oneshot::channel();
 
         let msg = PendingMessage {
@@ -295,7 +297,10 @@ impl MessageBatcher {
             response_tx: tx,
         };
 
-        self.sender.send(BatchCommand::Add(msg)).await.unwrap();
+        self.sender
+            .send(BatchCommand::Add(msg))
+            .await
+            .expect("send batch command to batcher task");
         rx
     }
 
@@ -305,14 +310,14 @@ impl MessageBatcher {
         }
 
         // Send batch request
-        let batch: Vec<_> = pending.drain(..).collect();
+        let batch: Vec<_> = std::mem::take(pending);
 
         // Process responses
         for msg in batch {
             let response = client
                 .send_request::<_, Vec<u8>>(&msg.method, &msg.payload)
                 .await
-                .unwrap();
+                .expect("send batched IPC request");
             let _ = msg.response_tx.send(response);
         }
     }
@@ -347,7 +352,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires wezterm-utils-daemon running on named pipe"]
     async fn test_message_batching() {
-        let client = IpcClient::connect_json().await.unwrap();
+        let client = IpcClient::connect_json()
+            .await
+            .expect("connect JSON IPC client for batching test");
         let mut batcher = MessageBatcher::new(client);
 
         // Send multiple messages sequentially (send takes &mut self)

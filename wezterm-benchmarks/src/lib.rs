@@ -1,3 +1,5 @@
+// Benchmark scaffolding — fields are read via criterion measurement, not direct access
+#![allow(dead_code)]
 //! Performance optimization library for WezTerm utilities
 //!
 //! This library provides high-performance implementations for:

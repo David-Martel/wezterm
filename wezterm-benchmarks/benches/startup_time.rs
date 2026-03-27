@@ -1,10 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::process::Command;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
-use wezterm_benchmarks::startup::{
-    DeferredInitializer, LazyInitializer, PreloadedResources, StartupOptimizer,
-};
+use wezterm_benchmarks::startup::{DeferredInitializer, PreloadedResources};
 
 fn bench_utility_startup(c: &mut Criterion) {
     let mut group = c.benchmark_group("utility_startup");
@@ -22,7 +20,10 @@ fn bench_utility_startup(c: &mut Criterion) {
         group.bench_function(name, |b| {
             b.iter(|| {
                 let start = Instant::now();
-                let output = Command::new("cmd").args(["/C", cmd]).output().unwrap();
+                let output = Command::new("cmd")
+                    .args(["/C", cmd])
+                    .output()
+                    .expect("run utility command for startup benchmark");
                 let duration = start.elapsed();
                 black_box((output, duration))
             });
@@ -33,7 +34,7 @@ fn bench_utility_startup(c: &mut Criterion) {
 }
 
 fn bench_initialization_strategies(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for initialization strategy benchmark");
 
     let mut group = c.benchmark_group("initialization_strategies");
 
@@ -129,7 +130,7 @@ fn bench_initialization_strategies(c: &mut Criterion) {
 }
 
 fn bench_dependency_loading(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for dependency loading benchmark");
 
     let mut group = c.benchmark_group("dependency_loading");
 
@@ -228,14 +229,16 @@ fn bench_config_parsing(c: &mut Criterion) {
 
     group.bench_function("json_parsing", |b| {
         b.iter(|| {
-            let parsed: serde_json::Value = serde_json::from_str(&json_config).unwrap();
+            let parsed: serde_json::Value =
+                serde_json::from_str(&json_config).expect("parse JSON config in benchmark");
             black_box(parsed)
         });
     });
 
     group.bench_function("toml_parsing", |b| {
         b.iter(|| {
-            let parsed: toml::Value = toml::from_str(toml_config).unwrap();
+            let parsed: toml::Value =
+                toml::from_str(toml_config).expect("parse TOML config in benchmark");
             black_box(parsed)
         });
     });
@@ -245,7 +248,7 @@ fn bench_config_parsing(c: &mut Criterion) {
         cache.set("config", json_config.clone());
 
         b.iter(|| {
-            let config = cache.get("config").unwrap();
+            let config = cache.get("config").expect("retrieve cached config entry");
             black_box(config)
         });
     });
@@ -347,12 +350,12 @@ impl DependencyCache {
     }
 }
 
-fn load_dependency(name: &str) -> Vec<u8> {
+fn load_dependency(_name: &str) -> Vec<u8> {
     std::thread::sleep(Duration::from_millis(5));
     vec![0u8; 1000]
 }
 
-async fn async_load_dependency(name: &str) -> Vec<u8> {
+async fn async_load_dependency(_name: &str) -> Vec<u8> {
     tokio::time::sleep(Duration::from_millis(5)).await;
     vec![0u8; 1000]
 }

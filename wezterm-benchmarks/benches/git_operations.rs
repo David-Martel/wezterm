@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use git2::{Repository, Signature};
-use std::path::Path;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use wezterm_benchmarks::git::{
@@ -8,15 +7,17 @@ use wezterm_benchmarks::git::{
 };
 
 fn create_test_repo(num_files: usize, num_commits: usize) -> (TempDir, Repository) {
-    let temp_dir = TempDir::new().unwrap();
-    let repo = Repository::init(temp_dir.path()).unwrap();
+    let temp_dir = TempDir::new().expect("create temp dir for git benchmark repo");
+    let repo = Repository::init(temp_dir.path()).expect("init git repository in temp dir");
 
-    let sig = Signature::now("Test User", "test@example.com").unwrap();
+    let sig = Signature::now("Test User", "test@example.com")
+        .expect("create git signature for benchmark commits");
 
     // Create initial files
     for i in 0..num_files {
         let file_path = temp_dir.path().join(format!("file_{}.txt", i));
-        std::fs::write(&file_path, format!("Initial content {}", i)).unwrap();
+        std::fs::write(&file_path, format!("Initial content {}", i))
+            .expect("write initial benchmark file");
     }
 
     // Create commits
@@ -28,23 +29,31 @@ fn create_test_repo(num_files: usize, num_commits: usize) -> (TempDir, Repositor
                 &file_path,
                 format!("Content commit {} file {}", commit_num, i),
             )
-            .unwrap();
+            .expect("write modified benchmark file for commit");
         }
 
         // Stage all changes
-        let mut index = repo.index().unwrap();
+        let mut index = repo.index().expect("open git index for benchmark commit");
         index
             .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
-            .unwrap();
-        index.write().unwrap();
+            .expect("stage all files for benchmark commit");
+        index.write().expect("write git index to disk");
 
-        let tree_id = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_id).unwrap();
+        let tree_id = index
+            .write_tree()
+            .expect("write index tree for benchmark commit");
+        let tree = repo
+            .find_tree(tree_id)
+            .expect("find tree object for benchmark commit");
 
         let parent_commit = if commit_num == 0 {
             vec![]
         } else {
-            vec![repo.head().unwrap().peel_to_commit().unwrap()]
+            vec![repo
+                .head()
+                .expect("get HEAD for benchmark commit")
+                .peel_to_commit()
+                .expect("peel HEAD to commit for benchmark")]
         };
 
         repo.commit(
@@ -55,14 +64,14 @@ fn create_test_repo(num_files: usize, num_commits: usize) -> (TempDir, Repositor
             &tree,
             &parent_commit.iter().collect::<Vec<_>>(),
         )
-        .unwrap();
+        .expect("create benchmark commit");
     }
 
     (temp_dir, repo)
 }
 
 fn bench_git_status(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for git status benchmark");
 
     let mut group = c.benchmark_group("git_status");
 
@@ -76,7 +85,7 @@ fn bench_git_status(c: &mut Criterion) {
             |b, path| {
                 b.iter(|| {
                     let ops = GitOperations::new(path);
-                    let status = ops.get_status().unwrap();
+                    let status = ops.get_status().expect("get git status in benchmark");
                     black_box(status)
                 });
             },
@@ -88,7 +97,9 @@ fn bench_git_status(c: &mut Criterion) {
             |b, path| {
                 let cache = GitStatusCache::new(std::time::Duration::from_secs(1));
                 b.iter(|| {
-                    let status = cache.get_status(path).unwrap();
+                    let status = cache
+                        .get_status(path)
+                        .expect("get cached git status in benchmark");
                     black_box(status)
                 });
             },
@@ -100,7 +111,10 @@ fn bench_git_status(c: &mut Criterion) {
             |b, path| {
                 b.to_async(&rt).iter(|| async {
                     let ops = ParallelGitStatus::new();
-                    let status = ops.get_status(path).await.unwrap();
+                    let status = ops
+                        .get_status(path)
+                        .await
+                        .expect("get parallel git status in benchmark");
                     black_box(status)
                 });
             },
@@ -112,7 +126,9 @@ fn bench_git_status(c: &mut Criterion) {
             |b, path| {
                 let ops = IncrementalGitStatus::new(path);
                 b.iter(|| {
-                    let changes = ops.get_changes().unwrap();
+                    let changes = ops
+                        .get_changes()
+                        .expect("get incremental git changes in benchmark");
                     black_box(changes)
                 });
             },
@@ -132,7 +148,8 @@ fn bench_git_diff(c: &mut Criterion) {
         // Modify files for diff
         for i in 0..(num_files / 2) {
             let file_path = temp_dir.path().join(format!("file_{}.txt", i));
-            std::fs::write(&file_path, format!("Modified content {}", i)).unwrap();
+            std::fs::write(&file_path, format!("Modified content {}", i))
+                .expect("write modified file for git diff benchmark");
         }
 
         group.bench_with_input(
@@ -141,7 +158,7 @@ fn bench_git_diff(c: &mut Criterion) {
             |b, path| {
                 b.iter(|| {
                     let ops = GitOperations::new(path);
-                    let diff = ops.get_diff().unwrap();
+                    let diff = ops.get_diff().expect("get git diff in benchmark");
                     black_box(diff)
                 });
             },
@@ -153,7 +170,9 @@ fn bench_git_diff(c: &mut Criterion) {
             |b, path| {
                 let cache = GitStatusCache::new(std::time::Duration::from_secs(1));
                 b.iter(|| {
-                    let diff = cache.get_diff(path).unwrap();
+                    let diff = cache
+                        .get_diff(path)
+                        .expect("get cached git diff in benchmark");
                     black_box(diff)
                 });
             },
@@ -177,7 +196,7 @@ fn bench_git_log(c: &mut Criterion) {
             |b, path| {
                 b.iter(|| {
                     let ops = GitOperations::new(path);
-                    let log = ops.get_log(100).unwrap();
+                    let log = ops.get_log(100).expect("get git log in benchmark");
                     black_box(log)
                 });
             },
@@ -189,7 +208,9 @@ fn bench_git_log(c: &mut Criterion) {
             |b, path| {
                 let cache = GitStatusCache::new(std::time::Duration::from_secs(5));
                 b.iter(|| {
-                    let log = cache.get_log(path, 100).unwrap();
+                    let log = cache
+                        .get_log(path, 100)
+                        .expect("get cached git log in benchmark");
                     black_box(log)
                 });
             },
@@ -209,7 +230,9 @@ fn bench_git_blame(c: &mut Criterion) {
     group.bench_function("blame_file", |b| {
         b.iter(|| {
             let ops = GitOperations::new(temp_dir.path());
-            let blame = ops.blame_file(&file_path).unwrap();
+            let blame = ops
+                .blame_file(&file_path)
+                .expect("blame file in git benchmark");
             black_box(blame)
         });
     });
@@ -217,7 +240,9 @@ fn bench_git_blame(c: &mut Criterion) {
     group.bench_function("cached_blame", |b| {
         let cache = GitStatusCache::new(std::time::Duration::from_secs(10));
         b.iter(|| {
-            let blame = cache.blame_file(temp_dir.path(), &file_path).unwrap();
+            let blame = cache
+                .blame_file(temp_dir.path(), &file_path)
+                .expect("get cached git blame in benchmark");
             black_box(blame)
         });
     });

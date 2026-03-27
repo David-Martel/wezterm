@@ -1,6 +1,5 @@
 //! Memory management and optimization utilities
 
-use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
 use object_pool::{Pool, Reusable};
 use parking_lot::{Mutex, RwLock};
@@ -32,7 +31,7 @@ impl MemoryPool {
         // Check if we can reuse an existing allocation
         let mut free_list = self.free_list.lock();
         if let Some(id) = free_list.pop() {
-            if let Some(mut entry) = self.allocations.get_mut(&id) {
+            if let Some(entry) = self.allocations.get_mut(&id) {
                 if entry.len() >= size {
                     return PooledAllocation {
                         id,
@@ -42,12 +41,14 @@ impl MemoryPool {
             }
         }
 
-        // Allocate new
-        let current = self.total_size.fetch_add(size, Ordering::Relaxed);
-        if current + size > self.max_size {
-            self.total_size.fetch_sub(size, Ordering::Relaxed);
-            panic!("Memory pool exhausted");
-        }
+        // Allocate new — check capacity before committing
+        let current = self.total_size.load(Ordering::Relaxed);
+        assert!(
+            current + size <= self.max_size,
+            "Memory pool exhausted: requested {size} bytes but only {} available",
+            self.max_size.saturating_sub(current)
+        );
+        self.total_size.fetch_add(size, Ordering::Relaxed);
 
         let id = self.allocations.len();
         self.allocations.insert(id, vec![0u8; size]);
@@ -145,7 +146,11 @@ impl<T: Default + Send + Sync + 'static> AsyncObjectPool<T> {
     }
 
     pub async fn acquire(&self) -> PooledObject<T> {
-        let permit = self.semaphore.acquire().await.unwrap();
+        let permit = self
+            .semaphore
+            .acquire()
+            .await
+            .expect("acquire semaphore permit for async object pool");
         permit.forget(); // We'll release manually
 
         let obj = {
@@ -181,13 +186,17 @@ impl<T> std::ops::Deref for PooledObject<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.object.as_ref().unwrap()
+        self.object
+            .as_ref()
+            .expect("PooledObject inner value is present until drop")
     }
 }
 
 impl<T> std::ops::DerefMut for PooledObject<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.object.as_mut().unwrap()
+        self.object
+            .as_mut()
+            .expect("PooledObject inner value is present until drop")
     }
 }
 
@@ -267,6 +276,12 @@ struct AllocationInfo {
     size: usize,
     timestamp: Instant,
     location: String,
+}
+
+impl Default for MemoryTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MemoryTracker {
@@ -365,6 +380,12 @@ pub struct AsyncMemoryTracker {
     next_id: Arc<AtomicUsize>,
 }
 
+impl Default for AsyncMemoryTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AsyncMemoryTracker {
     pub fn new() -> Self {
         Self {
@@ -461,9 +482,9 @@ mod tests {
         let pool = AsyncObjectPool::<TestObject>::new(5);
 
         let obj1 = pool.acquire().await;
-        let obj2 = pool.acquire().await;
+        let _obj2 = pool.acquire().await;
 
         drop(obj1);
-        let obj3 = pool.acquire().await; // Should reuse obj1
+        let _obj3 = pool.acquire().await; // Should reuse obj1
     }
 }

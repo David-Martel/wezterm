@@ -8,7 +8,7 @@ use tokio::time::interval;
 use wezterm_benchmarks::{
     fs::{DirectoryScanner, ParallelScanner},
     git::GitStatusCache,
-    ipc::{ConnectionPool, IpcClient},
+    ipc::ConnectionPool,
     memory::{BufferPool, MemoryTracker},
 };
 
@@ -109,8 +109,8 @@ async fn run_ipc_stress_test(
 
     let pool = Arc::new(ConnectionPool::new(args.clients * 2).await);
     let start = Instant::now();
-    let mut total_ops = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let mut errors = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let total_ops = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let errors = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
     let tasks: Vec<_> = (0..args.clients)
         .map(|client_id| {
@@ -284,7 +284,7 @@ async fn run_git_stress_test(
     let cache = Arc::new(GitStatusCache::new(Duration::from_secs(1)));
     let start = Instant::now();
     let mut total_ops = 0;
-    let mut cache_hits = 0;
+    let _cache_hits = 0;
 
     while start.elapsed() < duration {
         // Status check
@@ -373,5 +373,3 @@ async fn run_all_tests(args: &Args, duration: Duration) -> Result<(), Box<dyn st
 
     Ok(())
 }
-
-use std::sync::atomic::AtomicUsize;

@@ -1,3 +1,6 @@
+// TODO: migrate from deprecated Command::cargo_bin to cargo::cargo_bin_cmd! macro
+// when assert_cmd updates their API. Tracked upstream.
+#![allow(deprecated)]
 //! End-to-End (E2E) tests for wezterm-watch CLI
 //!
 //! These tests verify the CLI binary behavior by spawning the actual executable

@@ -1,6 +1,5 @@
 //! High-performance file system operations with caching and parallelism
 
-use dashmap::DashMap;
 use lru::LruCache;
 use memmap2::{Mmap, MmapOptions};
 use parking_lot::Mutex as SyncMutex;
@@ -28,11 +27,17 @@ pub struct DirectoryScanner {
     cache: Arc<SyncMutex<LruCache<PathBuf, Vec<DirEntry>>>>,
 }
 
+impl Default for DirectoryScanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DirectoryScanner {
     pub fn new() -> Self {
         Self {
             cache: Arc::new(SyncMutex::new(LruCache::new(
-                NonZeroUsize::new(100).unwrap(),
+                NonZeroUsize::new(100).expect("100 is non-zero"),
             ))),
         }
     }
@@ -40,7 +45,7 @@ impl DirectoryScanner {
     pub fn with_cache(size: usize) -> Self {
         Self {
             cache: Arc::new(SyncMutex::new(LruCache::new(
-                NonZeroUsize::new(size).unwrap(),
+                NonZeroUsize::new(size).expect("cache size must be non-zero"),
             ))),
         }
     }
@@ -80,16 +85,14 @@ impl DirectoryScanner {
     fn scan_sync(path: &Path) -> Result<Vec<DirEntry>, std::io::Error> {
         let mut entries = Vec::new();
 
-        for entry in WalkDir::new(path).max_depth(3) {
-            if let Ok(e) = entry {
-                let metadata = e.metadata()?;
-                entries.push(DirEntry {
-                    path: e.path().to_path_buf(),
-                    is_dir: metadata.is_dir(),
-                    size: metadata.len(),
-                    modified: metadata.modified()?,
-                });
-            }
+        for e in WalkDir::new(path).max_depth(3).into_iter().flatten() {
+            let metadata = e.metadata()?;
+            entries.push(DirEntry {
+                path: e.path().to_path_buf(),
+                is_dir: metadata.is_dir(),
+                size: metadata.len(),
+                modified: metadata.modified()?,
+            });
         }
 
         Ok(entries)
@@ -98,6 +101,12 @@ impl DirectoryScanner {
 
 /// Parallel directory scanner using rayon
 pub struct ParallelScanner;
+
+impl Default for ParallelScanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ParallelScanner {
     pub fn new() -> Self {
@@ -135,6 +144,12 @@ impl ParallelScanner {
 pub struct IncrementalScanner {
     state: Arc<RwLock<HashMap<PathBuf, DirEntry>>>,
     last_scan: Arc<SyncMutex<HashMap<PathBuf, Instant>>>,
+}
+
+impl Default for IncrementalScanner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl IncrementalScanner {
@@ -218,7 +233,7 @@ impl FileCache {
     pub fn new(max_files: usize) -> Self {
         Self {
             cache: Arc::new(SyncMutex::new(LruCache::new(
-                NonZeroUsize::new(max_files).unwrap(),
+                NonZeroUsize::new(max_files).expect("max_files must be non-zero"),
             ))),
         }
     }
@@ -288,6 +303,12 @@ pub enum FileEventKind {
     Renamed { from: PathBuf, to: PathBuf },
 }
 
+impl Default for Watcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Watcher {
     pub fn new() -> Self {
         Self {
@@ -295,7 +316,7 @@ impl Watcher {
         }
     }
 
-    pub async fn watch(&self, path: &Path) -> Result<(), std::io::Error> {
+    pub async fn watch(&self, _path: &Path) -> Result<(), std::io::Error> {
         // Mock implementation for benchmarking
         Ok(())
     }
@@ -320,7 +341,7 @@ impl DebouncedWatcher {
         }
     }
 
-    pub async fn watch(&self, path: &Path) -> Result<(), std::io::Error> {
+    pub async fn watch(&self, _path: &Path) -> Result<(), std::io::Error> {
         // Mock implementation for benchmarking
         Ok(())
     }
@@ -343,12 +364,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_directory_scanner() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("create temp dir for scanner test");
         let file_path = temp_dir.path().join("test.txt");
-        std::fs::write(&file_path, "test content").unwrap();
+        std::fs::write(&file_path, "test content").expect("write test file");
 
         let scanner = DirectoryScanner::new();
-        let entries = scanner.scan(temp_dir.path()).await.unwrap();
+        let entries = scanner.scan(temp_dir.path()).await.expect("scan temp dir");
 
         assert!(!entries.is_empty());
         assert!(entries.iter().any(|e| e.path == file_path));
@@ -356,30 +377,36 @@ mod tests {
 
     #[tokio::test]
     async fn test_incremental_scanner() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("create temp dir for incremental scanner test");
         let file1 = temp_dir.path().join("file1.txt");
-        std::fs::write(&file1, "content1").unwrap();
+        std::fs::write(&file1, "content1").expect("write file1 for incremental scanner test");
 
         let scanner = IncrementalScanner::new();
-        let _ = scanner.initial_scan(temp_dir.path()).await.unwrap();
+        let _ = scanner
+            .initial_scan(temp_dir.path())
+            .await
+            .expect("initial scan of temp dir");
 
         // Add new file
         let file2 = temp_dir.path().join("file2.txt");
-        std::fs::write(&file2, "content2").unwrap();
+        std::fs::write(&file2, "content2").expect("write file2 for incremental scanner test");
 
-        let changes = scanner.get_changes(temp_dir.path()).await.unwrap();
+        let changes = scanner
+            .get_changes(temp_dir.path())
+            .await
+            .expect("get incremental changes from temp dir");
 
         assert!(changes.iter().any(|c| matches!(c, FileChange::Added(_))));
     }
 
     #[test]
     fn test_memory_mapped_reader() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("create temp dir for mmap test");
         let file_path = temp_dir.path().join("large.bin");
         let data = vec![42u8; 1000];
-        std::fs::write(&file_path, &data).unwrap();
+        std::fs::write(&file_path, &data).expect("write binary test file for mmap");
 
-        let reader = MemoryMappedReader::new(&file_path).unwrap();
+        let reader = MemoryMappedReader::new(&file_path).expect("open memory-mapped file");
         let content = reader.read_all();
 
         assert_eq!(content.len(), 1000);

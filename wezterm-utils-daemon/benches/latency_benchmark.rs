@@ -1,6 +1,6 @@
 //! Performance benchmarks for wezterm-utils-daemon
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -20,7 +20,9 @@ fn benchmark_json_serialization(c: &mut Criterion) {
                 "method": "daemon/ping",
                 "id": 1
             });
-            black_box(serde_json::to_string(&request).unwrap());
+            black_box(
+                serde_json::to_string(&request).expect("serialize JSON-RPC request to string"),
+            );
         });
     });
 
@@ -31,7 +33,9 @@ fn benchmark_json_serialization(c: &mut Criterion) {
                 "result": {"status": "pong"},
                 "id": 1
             });
-            black_box(serde_json::to_string(&response).unwrap());
+            black_box(
+                serde_json::to_string(&response).expect("serialize JSON-RPC response to string"),
+            );
         });
     });
 
@@ -50,7 +54,10 @@ fn benchmark_json_serialization(c: &mut Criterion) {
                 },
                 "id": 1
             });
-            black_box(serde_json::to_string(&message).unwrap());
+            black_box(
+                serde_json::to_string(&message)
+                    .expect("serialize complex JSON-RPC message to string"),
+            );
         });
     });
 
@@ -64,7 +71,7 @@ fn benchmark_round_trip_latency(c: &mut Criterion) {
     group.sample_size(100);
 
     // Only run if daemon is available
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime to probe for daemon availability");
     let pipe_name = r"\\.\pipe\wezterm-utils-test";
 
     // Test if daemon is running
@@ -77,7 +84,7 @@ fn benchmark_round_trip_latency(c: &mut Criterion) {
     }
 
     group.bench_function("ping", |b| {
-        let rt = Runtime::new().unwrap();
+        let rt = Runtime::new().expect("create tokio runtime for ping round-trip benchmark");
 
         b.to_async(&rt).iter(|| async {
             let client = ClientOptions::new()
@@ -93,14 +100,28 @@ fn benchmark_round_trip_latency(c: &mut Criterion) {
                 "id": 1
             });
 
-            let json = format!("{}\n", serde_json::to_string(&request).unwrap());
-            writer.write_all(json.as_bytes()).await.unwrap();
-            writer.flush().await.unwrap();
+            let json = format!(
+                "{}\n",
+                serde_json::to_string(&request).expect("serialize ping request to JSON string")
+            );
+            writer
+                .write_all(json.as_bytes())
+                .await
+                .expect("write ping request to named pipe");
+            writer
+                .flush()
+                .await
+                .expect("flush ping request to named pipe");
 
             let mut line = String::new();
-            reader.read_line(&mut line).await.unwrap();
+            reader
+                .read_line(&mut line)
+                .await
+                .expect("read ping response from named pipe");
 
-            black_box(serde_json::from_str::<serde_json::Value>(&line).unwrap());
+            black_box(
+                serde_json::from_str::<serde_json::Value>(&line).expect("parse ping response JSON"),
+            );
         });
     });
 
@@ -120,13 +141,19 @@ fn benchmark_protocol_parsing(c: &mut Criterion) {
 
     group.bench_function("parse_request", |b| {
         b.iter(|| {
-            black_box(serde_json::from_str::<serde_json::Value>(request_json).unwrap());
+            black_box(
+                serde_json::from_str::<serde_json::Value>(request_json)
+                    .expect("parse JSON-RPC request from string"),
+            );
         });
     });
 
     group.bench_function("parse_response", |b| {
         b.iter(|| {
-            black_box(serde_json::from_str::<serde_json::Value>(response_json).unwrap());
+            black_box(
+                serde_json::from_str::<serde_json::Value>(response_json)
+                    .expect("parse JSON-RPC response from string"),
+            );
         });
     });
 

@@ -181,16 +181,26 @@ pub fn show_notif(toast: ToastNotification) -> Result<(), Box<dyn std::error::Er
                         let identifier = identifier.clone();
 
                         extern "C" {
-                            fn dispatch_get_global_queue(identifier: isize, flags: usize) -> *mut std::ffi::c_void;
+                            fn dispatch_get_global_queue(
+                                identifier: isize,
+                                flags: usize,
+                            ) -> *mut std::ffi::c_void;
                             fn dispatch_time(when: u64, delta: i64) -> u64;
-                            fn dispatch_after(when: u64, queue: *mut std::ffi::c_void, block: *mut block2::Block<dyn Fn()>);
+                            fn dispatch_after(
+                                when: u64,
+                                queue: *mut std::ffi::c_void,
+                                block: *mut block2::Block<dyn Fn()>,
+                            );
                         }
 
                         unsafe {
                             let queue = dispatch_get_global_queue(0, 0); // DISPATCH_QUEUE_PRIORITY_DEFAULT
                             let when = dispatch_time(0, timeout.as_nanos() as i64); // DISPATCH_TIME_NOW = 0
                             let block = block2::RcBlock::new(move || {
-                                let ident_array = NSArray::from_retained_slice(&[NSString::from_str(&identifier)]);
+                                let ident_array =
+                                    NSArray::from_retained_slice(&[NSString::from_str(
+                                        &identifier,
+                                    )]);
                                 CENTER.removeDeliveredNotificationsWithIdentifiers(&ident_array);
                             });
                             dispatch_after(when, queue, &*block as *const _ as *mut _);

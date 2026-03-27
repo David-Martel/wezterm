@@ -352,7 +352,8 @@ fn test_custom_ignore_patterns() {
         .iter()
         .filter(|e| {
             if let Some(path) = e.path() {
-                path.ends_with(".bak") || path.ends_with(".cache")
+                path.extension()
+                    .is_some_and(|ext| ext == "bak" || ext == "cache")
             } else {
                 false
             }
@@ -363,7 +364,7 @@ fn test_custom_ignore_patterns() {
         .iter()
         .filter(|e| {
             if let Some(path) = e.path() {
-                path.ends_with(".txt")
+                path.extension().is_some_and(|ext| ext == "txt")
             } else {
                 false
             }
@@ -525,7 +526,7 @@ fn test_git_status_integration() {
 
     let status = monitor.get_status().unwrap();
     assert!(
-        status.file_statuses.len() > 0,
+        !status.file_statuses.is_empty(),
         "Should detect modified file"
     );
 

@@ -22,8 +22,9 @@ rustflags = ["-C", "target-feature=+crt-static"]
 # Build Configuration
 # ----------------------------------------------------------------------------
 [build]
-# Global rustc-wrapper removed; we now set RUSTC_WRAPPER selectively in Justfile tasks
-# to avoid issues with clippy probe (-vV) failures when using sccache
+# Override global sccache rustc-wrapper — sccache port conflicts cause clippy failures.
+# Set RUSTC_WRAPPER=sccache explicitly in Justfile tasks that benefit from caching.
+rustc-wrapper = ""
 incremental = true                 # Enable incremental compilation by default
 # jobs = 8                         # Uncomment to override auto-detected parallelism
 

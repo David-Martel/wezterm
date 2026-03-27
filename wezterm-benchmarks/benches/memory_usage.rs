@@ -66,7 +66,7 @@ fn bench_memory_allocations(c: &mut Criterion) {
 }
 
 fn bench_object_pooling(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for object pooling benchmark");
 
     let mut group = c.benchmark_group("object_pooling");
 
@@ -208,7 +208,9 @@ fn bench_cache_memory(c: &mut Criterion) {
 
     group.bench_function("lru_cache", |b| {
         b.iter(|| {
-            let mut cache = LruCache::<String, Vec<u8>>::new(NonZeroUsize::new(1000).unwrap());
+            let mut cache = LruCache::<String, Vec<u8>>::new(
+                NonZeroUsize::new(1000).expect("1000 is non-zero"),
+            );
             for i in 0..10000 {
                 let key = format!("key_{}", i);
                 let value = vec![0u8; 1024];
@@ -234,7 +236,7 @@ fn bench_cache_memory(c: &mut Criterion) {
 }
 
 fn bench_memory_leaks(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("create tokio runtime for memory leak benchmark");
 
     let mut group = c.benchmark_group("memory_leak_detection");
     group.sample_size(10);
