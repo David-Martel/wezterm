@@ -55,6 +55,8 @@ jobs:
 
       - name: Install ast-grep
         run: cargo install ast-grep --locked
+        env:
+          RUSTC_WRAPPER: ""
 
       - name: Check formatting
         run: cargo fmt --all --check
