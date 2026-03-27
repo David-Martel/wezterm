@@ -50,10 +50,13 @@ jobs:
 
       - name: Install nextest
         run: |
+          mkdir -p ${env:CARGO_HOME}\..\bin
           curl -LsSf https://get.nexte.st/latest/windows | tar zxf - -C ${env:CARGO_HOME}\..\bin
 
       - name: Install ast-grep
         run: cargo install ast-grep --locked
+        env:
+          RUSTC_WRAPPER: ""
 
       - name: Check formatting
         run: cargo fmt --all --check

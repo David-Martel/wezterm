@@ -125,13 +125,7 @@ impl Inner {
 }
 
 #[derive(Default)]
-pub(super) struct TextInputData {
-    // XXX: inner could probably be moved here
-    _inner: Mutex<TextInputDataInner>,
-}
-
-#[derive(Default)]
-pub(super) struct TextInputDataInner {}
+pub(super) struct TextInputData {}
 
 impl Dispatch<ZwpTextInputManagerV3, GlobalData, WaylandState> for TextInputState {
     fn event(
