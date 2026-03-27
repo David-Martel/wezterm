@@ -1,14 +1,14 @@
 //! Stress testing tool for WezTerm utilities
 
+use clap::Parser;
+use futures::future::join_all;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
-use clap::Parser;
-use futures::future::join_all;
 use wezterm_benchmarks::{
-    ipc::{IpcClient, ConnectionPool},
     fs::{DirectoryScanner, ParallelScanner},
     git::GitStatusCache,
+    ipc::{ConnectionPool, IpcClient},
     memory::{BufferPool, MemoryTracker},
 };
 
@@ -101,7 +101,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run_ipc_stress_test(args: &Args, duration: Duration) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_ipc_stress_test(
+    args: &Args,
+    duration: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting IPC stress test...");
 
     let pool = Arc::new(ConnectionPool::new(args.clients * 2).await);
@@ -125,7 +128,10 @@ async fn run_ipc_stress_test(args: &Args, duration: Duration) -> Result<(), Box<
 
                     let client = pool.get_or_create(&format!("client_{}", client_id)).await;
 
-                    match client.send_request::<_, String>("echo", &"test_payload").await {
+                    match client
+                        .send_request::<_, String>("echo", &"test_payload")
+                        .await
+                    {
                         Ok(_) => {
                             total_ops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         }
@@ -154,10 +160,16 @@ async fn run_ipc_stress_test(args: &Args, duration: Duration) -> Result<(), Box<
                     let ops = total_ops.load(std::sync::atomic::Ordering::Relaxed);
                     let err = errors.load(std::sync::atomic::Ordering::Relaxed);
                     let elapsed = start.elapsed().as_secs();
-                    let rate = if elapsed > 0 { ops / elapsed as usize } else { 0 };
+                    let rate = if elapsed > 0 {
+                        ops / elapsed as usize
+                    } else {
+                        0
+                    };
 
-                    println!("  [{:>3}s] Operations: {}, Errors: {}, Rate: {}/s",
-                        elapsed, ops, err, rate);
+                    println!(
+                        "  [{:>3}s] Operations: {}, Errors: {}, Rate: {}/s",
+                        elapsed, ops, err, rate
+                    );
                 }
             }
         })
@@ -185,7 +197,10 @@ async fn run_ipc_stress_test(args: &Args, duration: Duration) -> Result<(), Box<
     Ok(())
 }
 
-async fn run_file_stress_test(args: &Args, duration: Duration) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_file_stress_test(
+    args: &Args,
+    duration: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting file system stress test...");
 
     use tempfile::TempDir;
@@ -227,16 +242,22 @@ async fn run_file_stress_test(args: &Args, duration: Duration) -> Result<(), Box
 
     println!("\nFile System Test Results:");
     println!("  Total Scans: {}", total_scans);
-    println!("  Average Rate: {}/s", total_scans / duration.as_secs() as usize);
+    println!(
+        "  Average Rate: {}/s",
+        total_scans / duration.as_secs() as usize
+    );
 
     Ok(())
 }
 
-async fn run_git_stress_test(args: &Args, duration: Duration) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_git_stress_test(
+    args: &Args,
+    duration: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Git operations stress test...");
 
-    use tempfile::TempDir;
     use git2::{Repository, Signature};
+    use tempfile::TempDir;
 
     // Create test repo
     let temp_dir = TempDir::new()?;
@@ -245,7 +266,10 @@ async fn run_git_stress_test(args: &Args, duration: Duration) -> Result<(), Box<
     // Create initial commit
     let sig = Signature::now("Test", "test@example.com")?;
     for i in 0..50 {
-        std::fs::write(temp_dir.path().join(format!("file_{}.txt", i)), format!("content {}", i))?;
+        std::fs::write(
+            temp_dir.path().join(format!("file_{}.txt", i)),
+            format!("content {}", i),
+        )?;
     }
 
     let mut index = repo.index()?;
@@ -255,14 +279,7 @@ async fn run_git_stress_test(args: &Args, duration: Duration) -> Result<(), Box<
     let tree_id = index.write_tree()?;
     let tree = repo.find_tree(tree_id)?;
 
-    repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        "Initial commit",
-        &tree,
-        &[],
-    )?;
+    repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])?;
 
     let cache = Arc::new(GitStatusCache::new(Duration::from_secs(1)));
     let start = Instant::now();
@@ -289,12 +306,18 @@ async fn run_git_stress_test(args: &Args, duration: Duration) -> Result<(), Box<
 
     println!("\nGit Test Results:");
     println!("  Total Operations: {}", total_ops);
-    println!("  Average Rate: {}/s", total_ops / duration.as_secs() as usize);
+    println!(
+        "  Average Rate: {}/s",
+        total_ops / duration.as_secs() as usize
+    );
 
     Ok(())
 }
 
-async fn run_memory_stress_test(args: &Args, duration: Duration) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_memory_stress_test(
+    args: &Args,
+    duration: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting memory stress test...");
 
     let buffer_pool = Arc::new(BufferPool::new(1000, 4096));
@@ -324,7 +347,10 @@ async fn run_memory_stress_test(args: &Args, duration: Duration) -> Result<(), B
 
     println!("\nMemory Test Results:");
     println!("  Total Allocations: {}", total_allocations);
-    println!("  Average Rate: {}/s", total_allocations / duration.as_secs() as usize);
+    println!(
+        "  Average Rate: {}/s",
+        total_allocations / duration.as_secs() as usize
+    );
 
     Ok(())
 }

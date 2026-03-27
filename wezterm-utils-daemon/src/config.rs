@@ -82,7 +82,8 @@ impl Config {
         let path = path.as_ref();
         info!(path = ?path, "Loading configuration");
 
-        let content = fs::read_to_string(path).await
+        let content = fs::read_to_string(path)
+            .await
             .map_err(|e| DaemonError::Config(format!("Failed to read config file: {}", e)))?;
 
         let config: Config = toml::from_str(&content)?;
@@ -98,7 +99,8 @@ impl Config {
         let content = toml::to_string_pretty(self)
             .map_err(|e| DaemonError::Config(format!("Failed to serialize config: {}", e)))?;
 
-        fs::write(path, content).await
+        fs::write(path, content)
+            .await
             .map_err(|e| DaemonError::Config(format!("Failed to write config file: {}", e)))?;
 
         Ok(())
@@ -106,8 +108,7 @@ impl Config {
 
     /// Get default config file path
     pub fn default_path() -> PathBuf {
-        let mut path = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         path.push("wezterm-utils-daemon");
         path.push("config.toml");
         path

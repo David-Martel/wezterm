@@ -31,10 +31,7 @@ impl MessageRouter {
     }
 
     /// Start the router task
-    pub async fn run(
-        self: Arc<Self>,
-        mut rx: mpsc::UnboundedReceiver<(String, JsonRpcMessage)>,
-    ) {
+    pub async fn run(self: Arc<Self>, mut rx: mpsc::UnboundedReceiver<(String, JsonRpcMessage)>) {
         info!("Message router started");
 
         while let Some((connection_id, message)) = rx.recv().await {
@@ -89,7 +86,9 @@ impl MessageRouter {
         let connection = self
             .connection_manager
             .get_connection(connection_id)
-            .ok_or_else(|| DaemonError::Connection(format!("Connection {} not found", connection_id)))?;
+            .ok_or_else(|| {
+                DaemonError::Connection(format!("Connection {} not found", connection_id))
+            })?;
 
         let result = match self.parse_daemon_method(&request) {
             Ok(method) => match method {
@@ -108,8 +107,7 @@ impl MessageRouter {
                     self.handle_send(connection_id, target, message).await
                 }
                 DaemonMethod::Broadcast { event_type, data } => {
-                    self.handle_broadcast(connection_id, event_type, data)
-                        .await
+                    self.handle_broadcast(connection_id, event_type, data).await
                 }
                 DaemonMethod::Status => self.handle_status().await,
                 DaemonMethod::Ping => Ok(json!({"status": "pong"})),
@@ -121,10 +119,7 @@ impl MessageRouter {
         if let Some(id) = request.id {
             let response = match result {
                 Ok(value) => JsonRpcResponse::success(value, id),
-                Err(e) => JsonRpcResponse::error(
-                    JsonRpcError::custom(-32000, e.to_string()),
-                    id,
-                ),
+                Err(e) => JsonRpcResponse::error(JsonRpcError::custom(-32000, e.to_string()), id),
             };
 
             connection.send(JsonRpcMessage::Response(response)).await?;
@@ -225,9 +220,7 @@ impl MessageRouter {
             Some(RequestId::new_uuid()),
         );
 
-        target_conn
-            .send(JsonRpcMessage::Request(request))
-            .await?;
+        target_conn.send(JsonRpcMessage::Request(request)).await?;
 
         Ok(json!({
             "status": "sent",
@@ -247,10 +240,9 @@ impl MessageRouter {
             None, // Notifications have no id
         );
 
-        let sent_to = self.connection_manager.broadcast_to_subscribers(
-            &event_type,
-            JsonRpcMessage::Request(notification),
-        );
+        let sent_to = self
+            .connection_manager
+            .broadcast_to_subscribers(&event_type, JsonRpcMessage::Request(notification));
 
         info!(
             connection_id = %connection_id,
@@ -292,10 +284,7 @@ impl MessageRouter {
             warn!(method = %request.method, "Cannot route: no utility prefix in method name");
             if let Some(id) = request.id {
                 if let Some(sender) = self.connection_manager.get_connection(connection_id) {
-                    let err_response = JsonRpcResponse::error(
-                        JsonRpcError::method_not_found(),
-                        id,
-                    );
+                    let err_response = JsonRpcResponse::error(JsonRpcError::method_not_found(), id);
                     sender.send(JsonRpcMessage::Response(err_response)).await?;
                 }
             }
@@ -384,11 +373,7 @@ mod tests {
         let cm = Arc::new(ConnectionManager::new(10));
         let router = MessageRouter::new(cm, "0.1.0".to_string());
 
-        let request = JsonRpcRequest::new(
-            "daemon/ping",
-            None,
-            Some(RequestId::Number(1)),
-        );
+        let request = JsonRpcRequest::new("daemon/ping", None, Some(RequestId::Number(1)));
 
         let method = router.parse_daemon_method(&request).unwrap();
         assert!(matches!(method, DaemonMethod::Ping));

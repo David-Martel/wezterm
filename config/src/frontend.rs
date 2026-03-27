@@ -44,11 +44,9 @@ impl ToString for GpuInfo {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromDynamic, ToDynamic)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromDynamic, ToDynamic, Default)]
 pub enum WebGpuPowerPreference {
     #[default]
     LowPower,
     HighPerformance,
 }
-

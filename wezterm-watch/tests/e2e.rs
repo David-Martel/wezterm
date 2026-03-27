@@ -40,8 +40,7 @@ fn get_binary_path() -> PathBuf {
 
     // If not found, try target/debug or target/release
     if !path.exists() {
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .unwrap_or_else(|_| ".".to_string());
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
         let manifest_path = std::path::Path::new(&manifest_dir);
 
         #[cfg(windows)]
@@ -115,17 +114,42 @@ fn test_cli_status_json_format_in_git_repo() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should be valid JSON
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
     // Verify expected fields
-    assert!(json.get("git_branch").is_some(), "Should have git_branch field");
-    assert!(json.get("git_ahead").is_some(), "Should have git_ahead field");
-    assert!(json.get("git_behind").is_some(), "Should have git_behind field");
-    assert!(json.get("has_conflicts").is_some(), "Should have has_conflicts field");
-    assert!(json.get("modified_files").is_some(), "Should have modified_files field");
-    assert!(json.get("untracked_files").is_some(), "Should have untracked_files field");
-    assert!(json.get("staged_files").is_some(), "Should have staged_files field");
-    assert!(json.get("total_files").is_some(), "Should have total_files field");
+    assert!(
+        json.get("git_branch").is_some(),
+        "Should have git_branch field"
+    );
+    assert!(
+        json.get("git_ahead").is_some(),
+        "Should have git_ahead field"
+    );
+    assert!(
+        json.get("git_behind").is_some(),
+        "Should have git_behind field"
+    );
+    assert!(
+        json.get("has_conflicts").is_some(),
+        "Should have has_conflicts field"
+    );
+    assert!(
+        json.get("modified_files").is_some(),
+        "Should have modified_files field"
+    );
+    assert!(
+        json.get("untracked_files").is_some(),
+        "Should have untracked_files field"
+    );
+    assert!(
+        json.get("staged_files").is_some(),
+        "Should have staged_files field"
+    );
+    assert!(
+        json.get("total_files").is_some(),
+        "Should have total_files field"
+    );
 }
 
 #[test]
@@ -163,9 +187,10 @@ fn test_cli_status_in_non_git_directory() {
         .arg("--status")
         .timeout(Duration::from_secs(5));
 
-    cmd.assert()
-        .success()
-        .stderr(predicate::str::contains("Not a git repository").or(predicate::str::contains("git disabled")));
+    cmd.assert().success().stderr(
+        predicate::str::contains("Not a git repository")
+            .or(predicate::str::contains("git disabled")),
+    );
 }
 
 #[test]
@@ -270,7 +295,9 @@ fn test_cli_watch_directory_with_file_creation() {
 
     // Should contain at least one event
     assert!(
-        stdout.contains(r#""event_type""#) || stdout.contains("created") || stdout.contains("modified"),
+        stdout.contains(r#""event_type""#)
+            || stdout.contains("created")
+            || stdout.contains("modified"),
         "Should detect file creation event. Output: {}",
         stdout
     );
@@ -427,9 +454,10 @@ fn test_cli_argument_git_flags() {
         .arg("--no-git")
         .timeout(Duration::from_secs(5));
 
-    cmd.assert()
-        .success()
-        .stderr(predicate::str::contains("Not a git repository").or(predicate::str::contains("git disabled")));
+    cmd.assert().success().stderr(
+        predicate::str::contains("Not a git repository")
+            .or(predicate::str::contains("git disabled")),
+    );
 }
 
 #[test]
@@ -718,9 +746,10 @@ fn test_cli_conflicting_git_flags() {
         .arg("--no-git")
         .timeout(Duration::from_secs(5));
 
-    cmd.assert()
-        .success()
-        .stderr(predicate::str::contains("Not a git repository").or(predicate::str::contains("git disabled")));
+    cmd.assert().success().stderr(
+        predicate::str::contains("Not a git repository")
+            .or(predicate::str::contains("git disabled")),
+    );
 }
 
 #[test]

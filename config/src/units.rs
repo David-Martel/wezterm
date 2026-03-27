@@ -173,8 +173,7 @@ impl Dimension {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, FromDynamic, ToDynamic)]
-#[derive(Default)]
+#[derive(Clone, Debug, PartialEq, Eq, FromDynamic, ToDynamic, Default)]
 pub enum GeometryOrigin {
     /// x,y relative to overall screen coordinate system.
     /// Selected position might be outside of the regions covered
@@ -185,7 +184,6 @@ pub enum GeometryOrigin {
     ActiveScreen,
     Named(String),
 }
-
 
 #[derive(Debug, Clone, PartialEq, FromDynamic, ToDynamic)]
 pub struct GuiPosition {

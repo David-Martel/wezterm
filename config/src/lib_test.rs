@@ -12,6 +12,8 @@ fn test_injection() {
     assert!(!is_safe_lua_literal("os.execute('calc')"));
     assert!(!is_safe_lua_literal("{ a = os.execute('calc') }"));
     assert!(!is_safe_lua_literal("function() end"));
-    assert!(is_safe_lua_literal("{ nested = { table = true }, num = -1.2e+3, hex = 0xff }"));
+    assert!(is_safe_lua_literal(
+        "{ nested = { table = true }, num = -1.2e+3, hex = 0xff }"
+    ));
     assert!(!is_safe_lua_literal("{ [os.execute('calc')] = 1 }"));
 }

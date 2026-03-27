@@ -51,15 +51,13 @@ impl DirWrap {
             },
 
             #[cfg(feature = "russh")]
-            Self::Russh(dir) => {
-                match block_on(dir.next()) {
-                    Some((path, metadata)) => Ok((path, metadata)),
-                    None => Err(SftpChannelError::from(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof,
-                        "no more files",
-                    ))),
-                }
-            }
+            Self::Russh(dir) => match block_on(dir.next()) {
+                Some((path, metadata)) => Ok((path, metadata)),
+                None => Err(SftpChannelError::from(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "no more files",
+                ))),
+            },
         }
     }
 }

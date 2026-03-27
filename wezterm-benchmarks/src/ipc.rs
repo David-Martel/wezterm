@@ -1,14 +1,14 @@
 //! High-performance IPC implementations with optimizations
 
+use bytes::Bytes;
+use dashmap::DashMap;
+use lz4::block::{compress, decompress};
+use parking_lot::Mutex as SyncMutex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
-use serde::{Serialize, Deserialize};
-use bytes::Bytes;
-use dashmap::DashMap;
-use parking_lot::Mutex as SyncMutex;
-use lz4::block::{compress, decompress};
+use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 
 /// IPC client with multiple serialization formats
 pub struct IpcClient {
@@ -99,12 +99,8 @@ impl IpcClient {
 
     fn serialize<T: Serialize>(&self, value: &T) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         match self.format {
-            SerializationFormat::Json => {
-                Ok(serde_json::to_vec(value)?)
-            }
-            SerializationFormat::MessagePack => {
-                Ok(rmp_serde::to_vec(value)?)
-            }
+            SerializationFormat::Json => Ok(serde_json::to_vec(value)?),
+            SerializationFormat::MessagePack => Ok(rmp_serde::to_vec(value)?),
             SerializationFormat::MessagePackLz4 => {
                 let msgpack = rmp_serde::to_vec(value)?;
                 let compressed = compress(&msgpack, None, true)?;
@@ -118,12 +114,8 @@ impl IpcClient {
         data: &[u8],
     ) -> Result<R, Box<dyn std::error::Error>> {
         match self.format {
-            SerializationFormat::Json => {
-                Ok(serde_json::from_slice(data)?)
-            }
-            SerializationFormat::MessagePack => {
-                Ok(rmp_serde::from_slice(data)?)
-            }
+            SerializationFormat::Json => Ok(serde_json::from_slice(data)?),
+            SerializationFormat::MessagePack => Ok(rmp_serde::from_slice(data)?),
             SerializationFormat::MessagePackLz4 => {
                 let decompressed = decompress(data, None)?;
                 Ok(rmp_serde::from_slice(&decompressed)?)
@@ -200,7 +192,8 @@ impl ConnectionPool {
             self.evict_oldest();
         }
 
-        self.connections.insert(utility_id.to_string(), client_arc.clone());
+        self.connections
+            .insert(utility_id.to_string(), client_arc.clone());
         self.update_last_used(utility_id);
 
         client_arc
@@ -213,8 +206,7 @@ impl ConnectionPool {
 
     fn evict_oldest(&self) {
         let last_used = self.last_used.lock();
-        if let Some((oldest_id, _)) = last_used.iter()
-            .min_by_key(|(_, time)| *time) {
+        if let Some((oldest_id, _)) = last_used.iter().min_by_key(|(_, time)| *time) {
             self.connections.remove(oldest_id);
         }
     }
@@ -317,7 +309,10 @@ impl MessageBatcher {
 
         // Process responses
         for msg in batch {
-            let response = client.send_request::<_, Vec<u8>>(&msg.method, &msg.payload).await.unwrap();
+            let response = client
+                .send_request::<_, Vec<u8>>(&msg.method, &msg.payload)
+                .await
+                .unwrap();
             let _ = msg.response_tx.send(response);
         }
     }

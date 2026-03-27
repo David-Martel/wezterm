@@ -34,7 +34,10 @@ impl FromStr for OutputFormat {
             "pretty" => Ok(Self::Pretty),
             "events" => Ok(Self::Events),
             "summary" => Ok(Self::Summary),
-            _ => Err(ParseOutputFormatError(format!("Unknown output format: {}", s))),
+            _ => Err(ParseOutputFormatError(format!(
+                "Unknown output format: {}",
+                s
+            ))),
         }
     }
 }

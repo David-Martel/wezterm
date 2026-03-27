@@ -1,10 +1,10 @@
 //! Real-time performance monitoring dashboard for WezTerm utilities
 
+use clap::Parser;
 use std::sync::Arc;
 use std::time::Duration;
-use wezterm_benchmarks::monitoring::{MetricsCollector, PerfMonitor, AlertSystem, ReportGenerator};
 use tokio::time::interval;
-use clap::Parser;
+use wezterm_benchmarks::monitoring::{AlertSystem, MetricsCollector, PerfMonitor, ReportGenerator};
 
 #[derive(Parser)]
 #[clap(name = "perf-monitor")]
@@ -47,7 +47,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start alert handler
     tokio::spawn(async move {
         while let Some(alert) = alert_rx.recv().await {
-            println!("⚠️  ALERT [{}] {}: {}",
+            println!(
+                "⚠️  ALERT [{}] {}: {}",
                 match alert.severity {
                     wezterm_benchmarks::monitoring::AlertSeverity::Info => "INFO",
                     wezterm_benchmarks::monitoring::AlertSeverity::Warning => "WARN",
@@ -65,13 +66,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::spawn(async move {
             use warp::Filter;
 
-            let metrics = warp::path("metrics")
-                .map(move || collector.export_metrics());
+            let metrics = warp::path("metrics").map(move || collector.export_metrics());
 
-            println!("📊 Prometheus metrics available at http://localhost:{}/metrics", args.port);
-            warp::serve(metrics)
-                .run(([0, 0, 0, 0], args.port))
-                .await;
+            println!(
+                "📊 Prometheus metrics available at http://localhost:{}/metrics",
+                args.port
+            );
+            warp::serve(metrics).run(([0, 0, 0, 0], args.port)).await;
         });
     }
 
@@ -139,26 +140,50 @@ fn print_metrics(metrics: &wezterm_benchmarks::monitoring::PerformanceMetrics) {
     println!("╠═══════════════════════════════════════════╣");
 
     println!("║ 📡 IPC Performance                        ║");
-    println!("║   Latency P50: {:>8.2} ms               ║", metrics.ipc_latency_p50);
-    println!("║   Latency P99: {:>8.2} ms               ║", metrics.ipc_latency_p99);
-    println!("║   Active Connections: {:>3}                ║", metrics.active_connections);
+    println!(
+        "║   Latency P50: {:>8.2} ms               ║",
+        metrics.ipc_latency_p50
+    );
+    println!(
+        "║   Latency P99: {:>8.2} ms               ║",
+        metrics.ipc_latency_p99
+    );
+    println!(
+        "║   Active Connections: {:>3}                ║",
+        metrics.active_connections
+    );
 
     println!("╠═══════════════════════════════════════════╣");
 
     println!("║ 💾 Resource Usage                         ║");
-    println!("║   Memory: {:>8.2} MB                    ║", metrics.memory_usage_mb);
-    println!("║   CPU:    {:>8.2} %                     ║", metrics.cpu_usage_percent);
+    println!(
+        "║   Memory: {:>8.2} MB                    ║",
+        metrics.memory_usage_mb
+    );
+    println!(
+        "║   CPU:    {:>8.2} %                     ║",
+        metrics.cpu_usage_percent
+    );
 
     println!("╠═══════════════════════════════════════════╣");
 
     println!("║ 📁 File Operations                        ║");
-    println!("║   Ops/sec: {:>8.2}                      ║", metrics.file_ops_per_sec);
-    println!("║   Git Cache Hit Rate: {:>5.1}%            ║", metrics.git_cache_hit_rate * 100.0);
+    println!(
+        "║   Ops/sec: {:>8.2}                      ║",
+        metrics.file_ops_per_sec
+    );
+    println!(
+        "║   Git Cache Hit Rate: {:>5.1}%            ║",
+        metrics.git_cache_hit_rate * 100.0
+    );
 
     println!("╠═══════════════════════════════════════════╣");
 
     println!("║ ⚡ Startup                                ║");
-    println!("║   Average Time: {:>8.2} ms              ║", metrics.startup_time_avg);
+    println!(
+        "║   Average Time: {:>8.2} ms              ║",
+        metrics.startup_time_avg
+    );
 
     println!("╚═══════════════════════════════════════════╝");
 

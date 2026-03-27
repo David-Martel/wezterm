@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 // Use the notify types re-exported from notify-debouncer-full to ensure compatibility
-use notify_debouncer_full::notify::{Event, EventKind, RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::notify::Watcher as NotifyWatcher;
+use notify_debouncer_full::notify::{Event, EventKind, RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap};
 use std::path::{Path, PathBuf};
 use std::time::Duration;

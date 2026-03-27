@@ -39,7 +39,10 @@ impl WatchEvent {
 pub struct FileWatcher {
     _debouncer: Debouncer<RecommendedWatcher, FileIdMap>,
     receiver: Receiver<WatchEvent>,
-    #[expect(dead_code, reason = "stored for potential future use in dynamic filter updates")]
+    #[expect(
+        dead_code,
+        reason = "stored for potential future use in dynamic filter updates"
+    )]
     gitignore: Option<Gitignore>,
     watch_path: PathBuf,
 }
@@ -143,10 +146,22 @@ impl FileWatcher {
         }
 
         match event.kind {
-            EventKind::Create(_) => event.paths.first().map(|path| WatchEvent::Created(path.clone())),
-            EventKind::Modify(_) => event.paths.first().map(|path| WatchEvent::Modified(path.clone())),
-            EventKind::Remove(_) => event.paths.first().map(|path| WatchEvent::Deleted(path.clone())),
-            EventKind::Any => event.paths.first().map(|path| WatchEvent::Modified(path.clone())),
+            EventKind::Create(_) => event
+                .paths
+                .first()
+                .map(|path| WatchEvent::Created(path.clone())),
+            EventKind::Modify(_) => event
+                .paths
+                .first()
+                .map(|path| WatchEvent::Modified(path.clone())),
+            EventKind::Remove(_) => event
+                .paths
+                .first()
+                .map(|path| WatchEvent::Deleted(path.clone())),
+            EventKind::Any => event
+                .paths
+                .first()
+                .map(|path| WatchEvent::Modified(path.clone())),
             _ => None,
         }
     }
@@ -299,12 +314,7 @@ mod tests {
     #[test]
     fn test_file_watcher_creation() {
         let temp_dir = TempDir::new().unwrap();
-        let watcher = FileWatcher::new(
-            temp_dir.path().to_path_buf(),
-            100,
-            false,
-            vec![],
-        );
+        let watcher = FileWatcher::new(temp_dir.path().to_path_buf(), 100, false, vec![]);
 
         assert!(watcher.is_ok());
     }
@@ -363,7 +373,7 @@ mod tests {
         let watcher = FileWatcher::new(
             temp_dir.path().to_path_buf(),
             100,
-            true, // use gitignore
+            true,                         // use gitignore
             vec!["*.backup".to_string()], // additional ignores
         );
 
@@ -373,12 +383,7 @@ mod tests {
     #[test]
     fn test_file_watcher_receiver_available() {
         let temp_dir = TempDir::new().unwrap();
-        let watcher = FileWatcher::new(
-            temp_dir.path().to_path_buf(),
-            100,
-            false,
-            vec![],
-        ).unwrap();
+        let watcher = FileWatcher::new(temp_dir.path().to_path_buf(), 100, false, vec![]).unwrap();
 
         // Receiver should be accessible
         let _receiver = watcher.receiver();
@@ -395,12 +400,8 @@ mod tests {
         // Create subdirectory
         fs::create_dir(temp_dir.path().join("subdir")).unwrap();
 
-        let mut watcher = FileWatcher::new(
-            temp_dir.path().to_path_buf(),
-            100,
-            false,
-            vec![],
-        ).unwrap();
+        let mut watcher =
+            FileWatcher::new(temp_dir.path().to_path_buf(), 100, false, vec![]).unwrap();
 
         let result = watcher.watch(true);
         assert!(result.is_ok());
@@ -409,12 +410,8 @@ mod tests {
     #[test]
     fn test_file_watcher_watch_non_recursive() {
         let temp_dir = TempDir::new().unwrap();
-        let mut watcher = FileWatcher::new(
-            temp_dir.path().to_path_buf(),
-            100,
-            false,
-            vec![],
-        ).unwrap();
+        let mut watcher =
+            FileWatcher::new(temp_dir.path().to_path_buf(), 100, false, vec![]).unwrap();
 
         let result = watcher.watch(false);
         assert!(result.is_ok());
@@ -433,7 +430,8 @@ mod tests {
             50, // Short debounce for faster test
             false,
             vec![],
-        ).unwrap();
+        )
+        .unwrap();
 
         watcher.watch(true).unwrap();
         let receiver = watcher.receiver().clone();
@@ -466,12 +464,8 @@ mod tests {
         // Wait a bit for filesystem to settle
         thread::sleep(Duration::from_millis(100));
 
-        let mut watcher = FileWatcher::new(
-            temp_dir.path().to_path_buf(),
-            50,
-            false,
-            vec![],
-        ).unwrap();
+        let mut watcher =
+            FileWatcher::new(temp_dir.path().to_path_buf(), 50, false, vec![]).unwrap();
 
         watcher.watch(true).unwrap();
         let receiver = watcher.receiver().clone();
@@ -506,12 +500,8 @@ mod tests {
 
         thread::sleep(Duration::from_millis(100));
 
-        let mut watcher = FileWatcher::new(
-            temp_dir.path().to_path_buf(),
-            50,
-            false,
-            vec![],
-        ).unwrap();
+        let mut watcher =
+            FileWatcher::new(temp_dir.path().to_path_buf(), 50, false, vec![]).unwrap();
 
         watcher.watch(true).unwrap();
         let receiver = watcher.receiver().clone();
@@ -594,7 +584,8 @@ mod tests {
         fs::write(
             temp_dir.path().join(".gitignore"),
             "*.custom\nbuild/\n!important.custom\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         let gitignore = FileWatcher::load_gitignore(temp_dir.path(), vec![]);
         assert!(gitignore.is_ok());

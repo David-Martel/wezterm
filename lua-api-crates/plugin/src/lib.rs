@@ -118,8 +118,8 @@ impl RepoSpec {
         let plugin_dir = RepoSpec::plugins_dir().join(&component);
 
         let repo = gix::open(&path).context("open repository")?;
-        let url = get_remote_url(&repo)?
-            .ok_or_else(|| anyhow!("no remotes found in repository"))?;
+        let url =
+            get_remote_url(&repo)?.ok_or_else(|| anyhow!("no remotes found in repository"))?;
 
         Ok(Self {
             component,

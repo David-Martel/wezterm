@@ -1,12 +1,11 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use tokio::runtime::Runtime;
-use tempfile::TempDir;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use git2::{Repository, Signature};
-use wezterm_benchmarks::git::{
-    GitStatusCache, ParallelGitStatus, IncrementalGitStatus,
-    GitOperations
-};
 use std::path::Path;
+use tempfile::TempDir;
+use tokio::runtime::Runtime;
+use wezterm_benchmarks::git::{
+    GitOperations, GitStatusCache, IncrementalGitStatus, ParallelGitStatus,
+};
 
 fn create_test_repo(num_files: usize, num_commits: usize) -> (TempDir, Repository) {
     let temp_dir = TempDir::new().unwrap();
@@ -25,12 +24,18 @@ fn create_test_repo(num_files: usize, num_commits: usize) -> (TempDir, Repositor
         // Modify some files
         for i in 0..(num_files / 10).max(1) {
             let file_path = temp_dir.path().join(format!("file_{}.txt", i));
-            std::fs::write(&file_path, format!("Content commit {} file {}", commit_num, i)).unwrap();
+            std::fs::write(
+                &file_path,
+                format!("Content commit {} file {}", commit_num, i),
+            )
+            .unwrap();
         }
 
         // Stage all changes
         let mut index = repo.index().unwrap();
-        index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None).unwrap();
+        index
+            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .unwrap();
         index.write().unwrap();
 
         let tree_id = index.write_tree().unwrap();
@@ -49,7 +54,8 @@ fn create_test_repo(num_files: usize, num_commits: usize) -> (TempDir, Repositor
             &format!("Commit {}", commit_num),
             &tree,
             &parent_commit.iter().collect::<Vec<_>>(),
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     (temp_dir, repo)

@@ -27,7 +27,6 @@ pub enum Value {
     F64(OrderedFloat<f64>),
 }
 
-
 impl core::fmt::Debug for Value {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {

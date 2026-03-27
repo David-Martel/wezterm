@@ -1,10 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use tokio::runtime::Runtime;
-use systemstat::{System, Platform};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::time::Duration;
+use systemstat::{Platform, System};
+use tokio::runtime::Runtime;
 use wezterm_benchmarks::memory::{
-    MemoryPool, BufferPool, ObjectPool,
-    MemoryTracker, AllocationPattern
+    AllocationPattern, BufferPool, MemoryPool, MemoryTracker, ObjectPool,
 };
 
 fn get_memory_usage() -> u64 {

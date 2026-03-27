@@ -219,7 +219,9 @@ impl GitMonitor {
         let mut excluded_commits = std::collections::HashSet::new();
         if let Ok(walk) = repo
             .rev_walk([exclude])
-            .sorting(gix::revision::walk::Sorting::ByCommitTime(Default::default()))
+            .sorting(gix::revision::walk::Sorting::ByCommitTime(
+                Default::default(),
+            ))
             .all()
         {
             // Limit to prevent slowdowns
@@ -231,7 +233,9 @@ impl GitMonitor {
         // Walk from include and count non-excluded
         if let Ok(walk) = repo
             .rev_walk([include])
-            .sorting(gix::revision::walk::Sorting::ByCommitTime(Default::default()))
+            .sorting(gix::revision::walk::Sorting::ByCommitTime(
+                Default::default(),
+            ))
             .all()
         {
             for commit in walk.take(1000).flatten() {
@@ -288,15 +292,13 @@ impl GitMonitor {
                         };
                         (PathBuf::from(rela_path.to_string()), status)
                     }
-                    gix::status::index_worktree::iter::Item::DirectoryContents { entry, .. } => {
-                        (
-                            PathBuf::from(entry.rela_path.to_string()),
-                            FileStatus::Untracked,
-                        )
-                    }
-                    gix::status::index_worktree::iter::Item::Rewrite {
-                        source, copy, ..
-                    } => {
+                    gix::status::index_worktree::iter::Item::DirectoryContents {
+                        entry, ..
+                    } => (
+                        PathBuf::from(entry.rela_path.to_string()),
+                        FileStatus::Untracked,
+                    ),
+                    gix::status::index_worktree::iter::Item::Rewrite { source, copy, .. } => {
                         let status = if *copy {
                             FileStatus::Added
                         } else {
@@ -599,11 +601,10 @@ mod tests {
         let monitor = GitMonitor::new(temp_dir.path());
         let info = monitor.get_status().unwrap();
 
-        assert!(
-            info.file_statuses
-                .values()
-                .any(|s| *s == FileStatus::Untracked)
-        );
+        assert!(info
+            .file_statuses
+            .values()
+            .any(|s| *s == FileStatus::Untracked));
     }
 
     #[test]
@@ -651,11 +652,10 @@ mod tests {
         let monitor = GitMonitor::new(temp_dir.path());
         let info = monitor.get_status().unwrap();
 
-        assert!(
-            info.file_statuses
-                .values()
-                .any(|s| *s == FileStatus::Modified)
-        );
+        assert!(info
+            .file_statuses
+            .values()
+            .any(|s| *s == FileStatus::Modified));
     }
 
     #[test]

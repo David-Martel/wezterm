@@ -394,39 +394,37 @@ impl Module for WatcherModule {
         let watch_handle = handle.clone();
         watcher_mod.set(
             "watch",
-            lua.create_function(
-                move |_, (path, options): (String, Option<mlua::Table>)| {
-                    let recursive = options
-                        .as_ref()
-                        .and_then(|t| t.get::<_, bool>("recursive").ok())
-                        .unwrap_or(true);
-                    let use_gitignore = options
-                        .as_ref()
-                        .and_then(|t| t.get::<_, bool>("gitignore").ok())
-                        .unwrap_or(true);
+            lua.create_function(move |_, (path, options): (String, Option<mlua::Table>)| {
+                let recursive = options
+                    .as_ref()
+                    .and_then(|t| t.get::<_, bool>("recursive").ok())
+                    .unwrap_or(true);
+                let use_gitignore = options
+                    .as_ref()
+                    .and_then(|t| t.get::<_, bool>("gitignore").ok())
+                    .unwrap_or(true);
 
-                    let path_buf = PathBuf::from(&path);
-                    match watch_handle.watch(path_buf, recursive, use_gitignore) {
-                        Ok(id) => {
-                            log::info!(
-                                "Lua: Started watching '{}' (recursive={}, gitignore={}) -> id {}",
-                                path,
-                                recursive,
-                                use_gitignore,
-                                id
-                            );
-                            Ok(id)
-                        }
-                        Err(e) => {
-                            log::error!("Lua: Failed to watch '{}': {}", path, e);
-                            Err(mlua::Error::RuntimeError(format!(
-                                "Failed to watch path: {}",
-                                e
-                            )))
-                        }
+                let path_buf = PathBuf::from(&path);
+                match watch_handle.watch(path_buf, recursive, use_gitignore) {
+                    Ok(id) => {
+                        log::info!(
+                            "Lua: Started watching '{}' (recursive={}, gitignore={}) -> id {}",
+                            path,
+                            recursive,
+                            use_gitignore,
+                            id
+                        );
+                        Ok(id)
                     }
-                },
-            )?,
+                    Err(e) => {
+                        log::error!("Lua: Failed to watch '{}': {}", path, e);
+                        Err(mlua::Error::RuntimeError(format!(
+                            "Failed to watch path: {}",
+                            e
+                        )))
+                    }
+                }
+            })?,
         )?;
 
         // wezterm.watcher.unwatch(watch_id)
@@ -434,19 +432,17 @@ impl Module for WatcherModule {
         let unwatch_handle = handle.clone();
         watcher_mod.set(
             "unwatch",
-            lua.create_function(move |_, id: u64| {
-                match unwatch_handle.unwatch(id) {
-                    Ok(()) => {
-                        log::info!("Lua: Stopped watching id {}", id);
-                        Ok(())
-                    }
-                    Err(e) => {
-                        log::error!("Lua: Failed to unwatch id {}: {}", id, e);
-                        Err(mlua::Error::RuntimeError(format!(
-                            "Failed to unwatch: {}",
-                            e
-                        )))
-                    }
+            lua.create_function(move |_, id: u64| match unwatch_handle.unwatch(id) {
+                Ok(()) => {
+                    log::info!("Lua: Stopped watching id {}", id);
+                    Ok(())
+                }
+                Err(e) => {
+                    log::error!("Lua: Failed to unwatch id {}: {}", id, e);
+                    Err(mlua::Error::RuntimeError(format!(
+                        "Failed to unwatch: {}",
+                        e
+                    )))
                 }
             })?,
         )?;

@@ -27,7 +27,10 @@ fn write_config(dir: &TempDir, name: &str, content: &str) -> PathBuf {
 }
 
 /// Create a Config and load a config file, then get options for a host.
-fn load_config_for_host(config_path: &PathBuf, host: &str) -> std::collections::BTreeMap<String, String> {
+fn load_config_for_host(
+    config_path: &PathBuf,
+    host: &str,
+) -> std::collections::BTreeMap<String, String> {
     let mut config = Config::new();
     config.add_config_file(config_path);
     config.for_host(host)
@@ -255,7 +258,10 @@ HOST myhost
     let options = load_config_for_host(&config_path, "myhost");
 
     // Keywords should be case-insensitive
-    assert_eq!(options.get("hostname"), Some(&"myserver.example.com".to_string()));
+    assert_eq!(
+        options.get("hostname"),
+        Some(&"myserver.example.com".to_string())
+    );
     assert_eq!(options.get("user"), Some(&"myuser".to_string()));
 }
 
@@ -280,7 +286,10 @@ Host longline
 
     let options = load_config_for_host(&config_path, "longline");
 
-    let proxy_cmd = options.get("proxycommand").map(|s| s.as_str()).unwrap_or("");
+    let proxy_cmd = options
+        .get("proxycommand")
+        .map(|s| s.as_str())
+        .unwrap_or("");
     assert!(
         proxy_cmd.len() > 400,
         "Expected long line to be preserved, got length {}",
@@ -489,7 +498,10 @@ Host keyhost
     let options = load_config_for_host(&config_path, "keyhost");
 
     // Identity file should be set (may have tilde expanded or not)
-    let identity = options.get("identityfile").map(|s| s.as_str()).unwrap_or("");
+    let identity = options
+        .get("identityfile")
+        .map(|s| s.as_str())
+        .unwrap_or("");
     assert!(identity.contains("custom_key") || identity.contains("ssh"));
 
     assert_eq!(options.get("identitiesonly"), Some(&"yes".to_string()));
@@ -514,7 +526,10 @@ Host proxied
 
     let options = load_config_for_host(&config_path, "proxied");
 
-    let proxy = options.get("proxycommand").map(|s| s.as_str()).unwrap_or("");
+    let proxy = options
+        .get("proxycommand")
+        .map(|s| s.as_str())
+        .unwrap_or("");
     assert!(proxy.contains("bastion") || proxy.contains("%h"));
 }
 

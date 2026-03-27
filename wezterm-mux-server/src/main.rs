@@ -306,10 +306,10 @@ fn terminate_with_error(err: anyhow::Error) -> ! {
 }
 
 // TLS backend selection via features
-#[cfg(feature = "rustls")]
-mod tls;
 #[cfg(feature = "openssl")]
 mod ossl;
+#[cfg(feature = "rustls")]
+mod tls;
 
 pub fn spawn_listener() -> anyhow::Result<()> {
     let config = configuration();

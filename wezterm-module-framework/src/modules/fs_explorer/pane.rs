@@ -118,12 +118,10 @@ impl FsExplorerState {
         }
 
         // Sort: directories first, then alphabetically
-        self.entries.sort_by(|a, b| {
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
+        self.entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
 
         Ok(())
@@ -143,7 +141,8 @@ impl FsExplorerState {
 
     fn page_down(&mut self, viewport_height: usize) {
         if !self.entries.is_empty() {
-            self.selected_index = (self.selected_index + viewport_height).min(self.entries.len() - 1);
+            self.selected_index =
+                (self.selected_index + viewport_height).min(self.entries.len() - 1);
         }
     }
 
@@ -266,7 +265,9 @@ impl FsExplorerPane {
         // Calculate viewport
         let header_lines = 2; // Title + separator
         let footer_lines = 1; // Status line
-        let viewport_height = dims.viewport_rows.saturating_sub(header_lines + footer_lines);
+        let viewport_height = dims
+            .viewport_rows
+            .saturating_sub(header_lines + footer_lines);
 
         // Build ANSI escape sequence buffer
         let mut output = String::new();

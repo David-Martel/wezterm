@@ -79,9 +79,9 @@ impl DaemonClient {
         {
             use tokio::net::windows::named_pipe::ClientOptions;
 
-            let client = ClientOptions::new()
-                .open(path)
-                .map_err(|e| DaemonError::Connection(format!("Failed to connect to {}: {}", path, e)))?;
+            let client = ClientOptions::new().open(path).map_err(|e| {
+                DaemonError::Connection(format!("Failed to connect to {}: {}", path, e))
+            })?;
 
             let (read_half, write_half) = tokio::io::split(client);
 
@@ -95,9 +95,9 @@ impl DaemonClient {
         }
         #[cfg(unix)]
         {
-            let stream = tokio::net::UnixStream::connect(path)
-                .await
-                .map_err(|e| DaemonError::Connection(format!("Failed to connect to {}: {}", path, e)))?;
+            let stream = tokio::net::UnixStream::connect(path).await.map_err(|e| {
+                DaemonError::Connection(format!("Failed to connect to {}: {}", path, e))
+            })?;
 
             let (read_half, write_half) = tokio::io::split(stream);
 
@@ -117,15 +117,20 @@ impl DaemonClient {
         let request = JsonRpcRequest::new(method, Some(params), Some(id.clone()));
         let msg = JsonRpcMessage::Request(request);
 
-        let json = msg.to_string()
+        let json = msg
+            .to_string()
             .map_err(|e| DaemonError::Protocol(format!("Serialize failed: {}", e)))?;
 
         // Send
         {
             let mut writer = self.writer.lock().await;
-            writer.write_all(format!("{}\n", json).as_bytes()).await
+            writer
+                .write_all(format!("{}\n", json).as_bytes())
+                .await
                 .map_err(|e| DaemonError::Connection(format!("Write failed: {}", e)))?;
-            writer.flush().await
+            writer
+                .flush()
+                .await
                 .map_err(|e| DaemonError::Connection(format!("Flush failed: {}", e)))?;
         }
 
@@ -133,13 +138,17 @@ impl DaemonClient {
         let mut line = String::new();
         let read_future = async {
             let mut reader = self.reader.lock().await;
-            reader.read_line(&mut line).await
+            reader
+                .read_line(&mut line)
+                .await
                 .map_err(|e| DaemonError::Connection(format!("Read failed: {}", e)))
         };
 
         tokio::time::timeout(Duration::from_secs(5), read_future)
             .await
-            .map_err(|_| DaemonError::Timeout(format!("Request '{}' timed out after 5s", method)))??;
+            .map_err(|_| {
+                DaemonError::Timeout(format!("Request '{}' timed out after 5s", method))
+            })??;
 
         let response: JsonRpcResponse = serde_json::from_str(line.trim())
             .map_err(|e| DaemonError::Protocol(format!("Parse response failed: {}", e)))?;
@@ -159,13 +168,18 @@ impl DaemonClient {
         let request = JsonRpcRequest::new(method, Some(params), None);
         let msg = JsonRpcMessage::Request(request);
 
-        let json = msg.to_string()
+        let json = msg
+            .to_string()
             .map_err(|e| DaemonError::Protocol(format!("Serialize failed: {}", e)))?;
 
         let mut writer = self.writer.lock().await;
-        writer.write_all(format!("{}\n", json).as_bytes()).await
+        writer
+            .write_all(format!("{}\n", json).as_bytes())
+            .await
             .map_err(|e| DaemonError::Connection(format!("Write failed: {}", e)))?;
-        writer.flush().await
+        writer
+            .flush()
+            .await
             .map_err(|e| DaemonError::Connection(format!("Flush failed: {}", e)))?;
 
         Ok(())
@@ -175,10 +189,15 @@ impl DaemonClient {
 
     /// Register this client as a named utility with the daemon.
     pub async fn register(&self, name: &str, capabilities: Vec<String>) -> Result<Value> {
-        let result = self.request("daemon/register", json!({
-            "name": name,
-            "capabilities": capabilities,
-        })).await?;
+        let result = self
+            .request(
+                "daemon/register",
+                json!({
+                    "name": name,
+                    "capabilities": capabilities,
+                }),
+            )
+            .await?;
 
         *self.registered_name.lock().await = Some(name.to_string());
         debug!(name = %name, "Registered with daemon");
@@ -187,29 +206,42 @@ impl DaemonClient {
 
     /// Subscribe to event types.
     pub async fn subscribe(&self, event_types: &[&str]) -> Result<Value> {
-        let subscriptions: Vec<Value> = event_types.iter()
+        let subscriptions: Vec<Value> = event_types
+            .iter()
             .map(|et| json!({"event_type": et}))
             .collect();
 
-        self.request("daemon/subscribe", json!({
-            "subscriptions": subscriptions,
-        })).await
+        self.request(
+            "daemon/subscribe",
+            json!({
+                "subscriptions": subscriptions,
+            }),
+        )
+        .await
     }
 
     /// Broadcast an event to all subscribers of the given type.
     pub async fn broadcast(&self, event_type: &str, data: &Value) -> Result<Value> {
-        self.request("daemon/broadcast", json!({
-            "event_type": event_type,
-            "data": data,
-        })).await
+        self.request(
+            "daemon/broadcast",
+            json!({
+                "event_type": event_type,
+                "data": data,
+            }),
+        )
+        .await
     }
 
     /// Send a message to a specific named utility.
     pub async fn send_to(&self, target: &str, message: &Value) -> Result<Value> {
-        self.request("daemon/send", json!({
-            "target": target,
-            "message": message,
-        })).await
+        self.request(
+            "daemon/send",
+            json!({
+                "target": target,
+                "message": message,
+            }),
+        )
+        .await
     }
 
     /// Ping the daemon (keep-alive).
@@ -226,11 +258,15 @@ impl DaemonClient {
     ///
     /// Convenience method for the panel sync use case.
     pub async fn sync_panel_state(&self, window_id: u64, panels: &Value) -> Result<Value> {
-        self.broadcast("panel-state", &json!({
-            "window_id": window_id,
-            "panels": panels,
-            "timestamp": chrono::Utc::now().timestamp(),
-        })).await
+        self.broadcast(
+            "panel-state",
+            &json!({
+                "window_id": window_id,
+                "panels": panels,
+                "timestamp": chrono::Utc::now().timestamp(),
+            }),
+        )
+        .await
     }
 
     /// Check if the daemon is reachable.

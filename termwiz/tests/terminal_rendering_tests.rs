@@ -68,22 +68,22 @@ fn test_sgr_reset() {
 #[test]
 fn test_256_color_format() {
     // 256-color foreground: ESC[38;5;{color}m
-    let fg_256 = format!("\x1b[38;5;{}m", 196);  // Bright red
+    let fg_256 = format!("\x1b[38;5;{}m", 196); // Bright red
     assert!(fg_256.contains("38;5;196"));
 
     // 256-color background: ESC[48;5;{color}m
-    let bg_256 = format!("\x1b[48;5;{}m", 21);   // Blue
+    let bg_256 = format!("\x1b[48;5;{}m", 21); // Blue
     assert!(bg_256.contains("48;5;21"));
 }
 
 #[test]
 fn test_true_color_format() {
     // True color foreground: ESC[38;2;{r};{g};{b}m
-    let fg_rgb = format!("\x1b[38;2;{};{};{}m", 255, 128, 0);  // Orange
+    let fg_rgb = format!("\x1b[38;2;{};{};{}m", 255, 128, 0); // Orange
     assert!(fg_rgb.contains("38;2;255;128;0"));
 
     // True color background: ESC[48;2;{r};{g};{b}m
-    let bg_rgb = format!("\x1b[48;2;{};{};{}m", 0, 64, 128);   // Dark blue
+    let bg_rgb = format!("\x1b[48;2;{};{};{}m", 0, 64, 128); // Dark blue
     assert!(bg_rgb.contains("48;2;0;64;128"));
 }
 
@@ -155,7 +155,10 @@ fn test_osc_hyperlink() {
     // OSC 8 ; params ; uri ST text OSC 8 ; ; ST
     let link = format!(
         "{}8;;https://example.com{}Click Here{}8;;{}",
-        ansi::OSC, ansi::ST, ansi::OSC, ansi::ST
+        ansi::OSC,
+        ansi::ST,
+        ansi::OSC,
+        ansi::ST
     );
     assert!(link.contains("8;;https://example.com"));
 }
@@ -175,7 +178,7 @@ fn test_osc_clipboard() {
 #[test]
 fn test_basic_unicode() {
     let text = "Hello, 世界! Привет мир!";
-    assert!(text.chars().count() > text.len() / 4);  // Multi-byte chars
+    assert!(text.chars().count() > text.len() / 4); // Multi-byte chars
 }
 
 #[test]
@@ -203,9 +206,9 @@ fn test_wide_characters() {
 #[test]
 fn test_zero_width_characters() {
     // Zero-width joiner and non-joiner
-    let zwj = "\u{200D}";  // Zero-width joiner
+    let zwj = "\u{200D}"; // Zero-width joiner
     let zwnj = "\u{200C}"; // Zero-width non-joiner
-    assert_eq!(zwj.len(), 3);  // UTF-8 encoded
+    assert_eq!(zwj.len(), 3); // UTF-8 encoded
     assert_eq!(zwnj.len(), 3);
 }
 
@@ -250,7 +253,9 @@ fn test_iterm2_image_protocol() {
     let size = 1024;
     let header = format!(
         "{}1337;File=name={};size={};inline=1:",
-        ansi::OSC, filename, size
+        ansi::OSC,
+        filename,
+        size
     );
     assert!(header.contains("1337;File="));
     assert!(header.contains("inline=1"));
@@ -259,10 +264,7 @@ fn test_iterm2_image_protocol() {
 #[test]
 fn test_iterm2_image_dimensions() {
     // width and height parameters
-    let header = format!(
-        "{}1337;File=inline=1;width=auto;height=10:",
-        ansi::OSC
-    );
+    let header = format!("{}1337;File=inline=1;width=auto;height=10:", ansi::OSC);
     assert!(header.contains("width=auto"));
     assert!(header.contains("height=10"));
 }
@@ -399,11 +401,11 @@ fn test_nested_escape_sequences() {
 fn test_malformed_escape_sequences() {
     // Various malformed sequences that should be handled gracefully
     let sequences = [
-        "\x1b[",           // Incomplete CSI
-        "\x1b]",           // Incomplete OSC
-        "\x1b[999999m",    // Large parameter
-        "\x1b[;;m",        // Empty parameters
-        "\x1b[1;2;3;4;5;6;7;8;9m",  // Many parameters
+        "\x1b[",                   // Incomplete CSI
+        "\x1b]",                   // Incomplete OSC
+        "\x1b[999999m",            // Large parameter
+        "\x1b[;;m",                // Empty parameters
+        "\x1b[1;2;3;4;5;6;7;8;9m", // Many parameters
     ];
 
     for seq in sequences {

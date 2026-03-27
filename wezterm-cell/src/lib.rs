@@ -25,14 +25,12 @@ pub mod color;
 pub mod image;
 
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
 enum SmallColor {
     #[default]
     Default,
     PaletteIndex(PaletteIndex),
 }
-
 
 impl From<SmallColor> for ColorAttribute {
     fn from(val: SmallColor) -> Self {
@@ -183,7 +181,6 @@ pub enum SemanticType {
     Prompt = 2,
 }
 
-
 pub use wezterm_escape_parser::csi::{Blink, Intensity, Underline, VerticalAlign};
 
 impl Default for CellAttributes {
@@ -260,9 +257,10 @@ impl CellAttributes {
 
     pub fn foreground(&self) -> ColorAttribute {
         if let Some(fat) = self.fat.as_ref()
-            && fat.foreground != ColorAttribute::Default {
-                return fat.foreground;
-            }
+            && fat.foreground != ColorAttribute::Default
+        {
+            return fat.foreground;
+        }
         self.foreground.into()
     }
 
@@ -295,9 +293,10 @@ impl CellAttributes {
 
     pub fn background(&self) -> ColorAttribute {
         if let Some(fat) = self.fat.as_ref()
-            && fat.background != ColorAttribute::Default {
-                return fat.background;
-            }
+            && fat.background != ColorAttribute::Default
+        {
+            return fat.background;
+        }
         self.background.into()
     }
 
@@ -423,12 +422,12 @@ impl CellAttributes {
         if let Some(fat) = self.fat.as_ref()
             && (fat.background != ColorAttribute::Default
                 || fat.foreground != ColorAttribute::Default)
-            {
-                res.allocate_fat_attributes();
-                let new_fat = res.fat.as_mut().unwrap();
-                new_fat.foreground = fat.foreground;
-                new_fat.background = fat.background;
-            }
+        {
+            res.allocate_fat_attributes();
+            let new_fat = res.fat.as_mut().unwrap();
+            new_fat.foreground = fat.foreground;
+            new_fat.background = fat.background;
+        }
         // Reset the semantic type; clone_sgr_only is used primarily
         // to create a "blank" cell when clearing and we want that to
         // be deterministically tagged as Output so that we have an
@@ -853,9 +852,10 @@ impl UnicodeVersion {
     fn wcwidth(&self, c: char) -> usize {
         #[cfg(feature = "std")]
         if let Some(ref cell_widths) = self.cell_widths
-            && let Some(width) = cell_widths.get(&(c as u32)) {
-                return (*width).into();
-            }
+            && let Some(width) = cell_widths.get(&(c as u32))
+        {
+            return (*width).into();
+        }
         self.width(WCWIDTH_TABLE.classify(c))
     }
 

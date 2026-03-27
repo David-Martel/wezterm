@@ -578,9 +578,7 @@ impl Window {
             DragAcceptFiles(hwnd.0, winapi::shared::minwindef::TRUE);
         }
 
-        conn.windows
-            .borrow_mut()
-            .insert(hwnd, Rc::clone(&inner));
+        conn.windows.borrow_mut().insert(hwnd, Rc::clone(&inner));
 
         Ok(window_handle)
     }
@@ -2447,7 +2445,8 @@ impl KeyboardLayoutInfo {
             {
                 if let Some(c) = dead
                     .map
-                    .get(&(Self::fixup_mods(key.0), key.1 as u8)).copied()
+                    .get(&(Self::fixup_mods(key.0), key.1 as u8))
+                    .copied()
                 {
                     ResolvedDeadKey::Combined(c)
                 } else {

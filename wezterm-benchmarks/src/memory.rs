@@ -1,14 +1,14 @@
 //! Memory management and optimization utilities
 
-use std::collections::VecDeque;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
-use parking_lot::{Mutex, RwLock};
-use tokio::sync::Semaphore;
+use bytes::{Bytes, BytesMut};
 use dashmap::DashMap;
 use object_pool::{Pool, Reusable};
-use bytes::{Bytes, BytesMut};
+use parking_lot::{Mutex, RwLock};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
 
 /// Memory pool for efficient allocation
 pub struct MemoryPool {
@@ -223,7 +223,8 @@ impl SizeLimitedCache {
         {
             let mut cache = self.cache.write();
             if let Some(old_value) = cache.insert(key.clone(), value) {
-                self.size_tracker.fetch_sub(old_value.len(), Ordering::Relaxed);
+                self.size_tracker
+                    .fetch_sub(old_value.len(), Ordering::Relaxed);
             }
         }
 
@@ -280,11 +281,14 @@ impl MemoryTracker {
 
     pub fn record_allocation(&self, size: usize, location: &str) -> usize {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.allocations.insert(id, AllocationInfo {
-            size,
-            timestamp: Instant::now(),
-            location: location.to_string(),
-        });
+        self.allocations.insert(
+            id,
+            AllocationInfo {
+                size,
+                timestamp: Instant::now(),
+                location: location.to_string(),
+            },
+        );
         self.current.fetch_add(size, Ordering::Relaxed);
         id
     }
@@ -331,7 +335,13 @@ impl MemoryTracker {
             unsafe {
                 let mut pmc = PROCESS_MEMORY_COUNTERS::default();
                 let process = GetCurrentProcess();
-                if GetProcessMemoryInfo(process, &mut pmc, std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32).is_ok() {
+                if GetProcessMemoryInfo(
+                    process,
+                    &mut pmc,
+                    std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                )
+                .is_ok()
+                {
                     pmc.WorkingSetSize
                 } else {
                     0
@@ -404,9 +414,9 @@ impl AllocationPattern {
                 let mut rng = rand::thread_rng();
                 (0..count).map(|_| rng.gen_range(512..4096)).collect()
             }
-            Self::Fragmented => {
-                (0..count).map(|i| if i % 2 == 0 { 512 } else { 2048 }).collect()
-            }
+            Self::Fragmented => (0..count)
+                .map(|i| if i % 2 == 0 { 512 } else { 2048 })
+                .collect(),
             Self::BurstySmall => vec![256; count],
             Self::BurstyLarge => vec![8192; count],
         }

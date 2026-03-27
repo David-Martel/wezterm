@@ -1070,10 +1070,13 @@ impl SessionInner {
             SessionWrap::Russh(sess) => {
                 if sess.sftp.is_none() {
                     // Open SFTP channel via russh
-                    let sftp = crate::russh_backend::block_on(sess.sess.open_sftp())
-                        .map_err(|e| SftpChannelError::from(std::io::Error::other(
-                            format!("Failed to open SFTP channel: {}", e),
-                        )))?;
+                    let sftp =
+                        crate::russh_backend::block_on(sess.sess.open_sftp()).map_err(|e| {
+                            SftpChannelError::from(std::io::Error::other(format!(
+                                "Failed to open SFTP channel: {}",
+                                e
+                            )))
+                        })?;
                     sess.sftp = Some(SftpWrap::Russh(sftp));
                 }
                 Ok(sess.sftp.as_mut().expect("sftp should have been set above"))

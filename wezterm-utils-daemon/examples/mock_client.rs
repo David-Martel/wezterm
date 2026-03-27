@@ -193,8 +193,8 @@ async fn send_request(
 
     // Read response
     let mut line = String::new();
-    let bytes_read = tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut line))
-        .await??;
+    let bytes_read =
+        tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut line)).await??;
 
     if bytes_read == 0 {
         eprintln!("   ❌ Connection closed");

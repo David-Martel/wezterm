@@ -20,8 +20,7 @@ use wezterm_font::LoadedFont;
 use wezterm_term::color::{ColorAttribute, ColorPalette};
 use window::bitmaps::atlas::Sprite;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VerticalAlign {
     #[default]
     Top,
@@ -29,21 +28,18 @@ pub enum VerticalAlign {
     Middle,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayType {
     Block,
     Inline,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Float {
     #[default]
     None,
     Right,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PixelDimension {
@@ -140,8 +136,7 @@ impl BoxDimension {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum InheritableColor {
     #[default]
     Inherited,
@@ -153,7 +148,6 @@ pub enum InheritableColor {
         one_shot: bool,
     },
 }
-
 
 impl From<LinearRgba> for InheritableColor {
     fn from(color: LinearRgba) -> InheritableColor {

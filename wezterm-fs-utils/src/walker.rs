@@ -272,7 +272,9 @@ mod tests {
         let files: Vec<_> = walker.walk_files(root).collect();
 
         // Should only include files, not directories
-        assert!(files.iter().all(|r| r.as_ref().map(|e| !e.is_dir).unwrap_or(true)));
+        assert!(files
+            .iter()
+            .all(|r| r.as_ref().map(|e| !e.is_dir).unwrap_or(true)));
     }
 
     #[test]
@@ -348,7 +350,9 @@ mod tests {
         let entries = walker.walk(root).unwrap();
 
         // Should still include the empty directory
-        assert!(entries.iter().any(|e| e.file_name() == Some("empty") && e.is_dir));
+        assert!(entries
+            .iter()
+            .any(|e| e.file_name() == Some("empty") && e.is_dir));
     }
 
     #[test]
@@ -380,7 +384,7 @@ mod tests {
     fn test_walk_options_default() {
         let options = WalkOptions::default();
         assert!(!options.include_hidden);
-        assert!(!options.follow_symlinks);  // Default is false for safety
+        assert!(!options.follow_symlinks); // Default is false for safety
         assert!(options.respect_gitignore);
         assert!(options.max_depth.is_none());
         assert!(options.file_types.is_empty());

@@ -171,10 +171,8 @@ mod fingerprint_tests {
         // Test fingerprint computation (simulating key fingerprint)
         let test_data = b"test key data";
         let hash = Sha256::digest(test_data);
-        let fingerprint = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &hash[..],
-        );
+        let fingerprint =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &hash[..]);
 
         // Verify the fingerprint is base64 encoded
         assert!(!fingerprint.is_empty());
@@ -206,11 +204,7 @@ mod concurrency_tests {
     #[test]
     fn test_concurrent_block_on_calls() {
         // Verify multiple block_on calls don't interfere with each other
-        let results: Vec<_> = (0..10)
-            .map(|i| {
-                block_on(async move { i * 2 })
-            })
-            .collect();
+        let results: Vec<_> = (0..10).map(|i| block_on(async move { i * 2 })).collect();
 
         let expected: Vec<_> = (0..10).map(|i| i * 2).collect();
         assert_eq!(results, expected);
@@ -278,9 +272,8 @@ mod error_handling_tests {
 
     #[test]
     fn test_error_propagation_in_block_on() {
-        let result: Result<i32, Error> = block_on(async {
-            Err(Error::new(ErrorKind::NotFound, "test error"))
-        });
+        let result: Result<i32, Error> =
+            block_on(async { Err(Error::new(ErrorKind::NotFound, "test error")) });
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), ErrorKind::NotFound);
@@ -355,11 +348,11 @@ mod pty_size_edge_cases {
     fn test_standard_terminal_sizes() {
         // Common terminal sizes
         let standard_sizes = [
-            (24, 80),   // VT100 default
-            (25, 80),   // DOS/Windows console
-            (50, 132),  // Wide mode
-            (43, 80),   // EGA
-            (50, 80),   // VGA
+            (24, 80),  // VT100 default
+            (25, 80),  // DOS/Windows console
+            (50, 132), // Wide mode
+            (43, 80),  // EGA
+            (50, 80),  // VGA
         ];
 
         for (rows, cols) in standard_sizes {
@@ -429,8 +422,8 @@ mod signal_edge_cases {
 
 #[cfg(test)]
 mod session_event_tests {
-    use crate::session::SessionEvent;
     use crate::host::HostVerificationEvent;
+    use crate::session::SessionEvent;
     use smol::channel::bounded;
 
     #[test]

@@ -1,17 +1,17 @@
 //! Optimized Git operations with caching and parallel processing
 
+use cached::proc_macro::cached;
+use dashmap::DashMap;
+use git2::{DiffOptions, Oid, Repository, Status, StatusOptions};
+use lru::LruCache;
+use parking_lot::Mutex;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use dashmap::DashMap;
-use git2::{Repository, Status, StatusOptions, Oid, DiffOptions};
-use parking_lot::Mutex;
-use cached::proc_macro::cached;
-use lru::LruCache;
-use std::num::NonZeroUsize;
-use serde::{Serialize, Deserialize};
-use rayon::prelude::*;
 
 /// Git status information
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -115,10 +115,8 @@ impl GitStatusCache {
         let status = self.compute_status(&repo)?;
 
         // Update cache
-        self.cache.insert(
-            repo_path.to_path_buf(),
-            CachedEntry::new(status.clone()),
-        );
+        self.cache
+            .insert(repo_path.to_path_buf(), CachedEntry::new(status.clone()));
 
         Ok(status)
     }
@@ -136,10 +134,8 @@ impl GitStatusCache {
         let diff = self.compute_diff(&repo)?;
 
         // Update cache
-        self.diff_cache.insert(
-            repo_path.to_path_buf(),
-            CachedEntry::new(diff.clone()),
-        );
+        self.diff_cache
+            .insert(repo_path.to_path_buf(), CachedEntry::new(diff.clone()));
 
         Ok(diff)
     }
@@ -162,10 +158,7 @@ impl GitStatusCache {
         // Update cache
         {
             let mut cache = self.log_cache.lock();
-            cache.put(
-                repo_path.to_path_buf(),
-                CachedEntry::new(log.clone()),
-            );
+            cache.put(repo_path.to_path_buf(), CachedEntry::new(log.clone()));
         }
 
         Ok(log)
@@ -405,7 +398,9 @@ impl ParallelGitStatus {
             }
 
             Ok(info)
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
     }
 }
 

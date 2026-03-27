@@ -15,8 +15,8 @@
 #![cfg(feature = "docker-tests")]
 
 use std::process::Command;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 /// Docker container ID for the SSH server
 static mut CONTAINER_ID: Option<String> = None;
@@ -51,11 +51,16 @@ fn setup_docker_ssh_server() -> Result<String, String> {
             "run",
             "-d",
             "--rm",
-            "-p", &format!("{}:2222", SSH_PORT),
-            "-e", &format!("USER_NAME={}", TEST_USER),
-            "-e", &format!("USER_PASSWORD={}", TEST_PASSWORD),
-            "-e", "PASSWORD_ACCESS=true",
-            "-e", "SUDO_ACCESS=true",
+            "-p",
+            &format!("{}:2222", SSH_PORT),
+            "-e",
+            &format!("USER_NAME={}", TEST_USER),
+            "-e",
+            &format!("USER_PASSWORD={}", TEST_PASSWORD),
+            "-e",
+            "PASSWORD_ACCESS=true",
+            "-e",
+            "SUDO_ACCESS=true",
             "linuxserver/openssh-server:latest",
         ])
         .output()
@@ -78,9 +83,7 @@ fn setup_docker_ssh_server() -> Result<String, String> {
 
 /// Stop and remove the Docker container.
 fn cleanup_docker_container(container_id: &str) {
-    let _ = Command::new("docker")
-        .args(["stop", container_id])
-        .output();
+    let _ = Command::new("docker").args(["stop", container_id]).output();
 }
 
 /// Check if Docker is available.
@@ -118,12 +121,17 @@ mod docker_ssh_tests {
             // Test SSH connection using ssh command
             let ssh_test = Command::new("ssh")
                 .args([
-                    "-o", "StrictHostKeyChecking=no",
-                    "-o", "UserKnownHostsFile=/dev/null",
-                    "-o", &format!("Port={}", SSH_PORT),
-                    "-o", "BatchMode=yes",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    "UserKnownHostsFile=/dev/null",
+                    "-o",
+                    &format!("Port={}", SSH_PORT),
+                    "-o",
+                    "BatchMode=yes",
                     &format!("{}@127.0.0.1", TEST_USER),
-                    "echo", "Hello from SSH",
+                    "echo",
+                    "Hello from SSH",
                 ])
                 .output();
 

@@ -66,9 +66,8 @@ impl FsExplorerModule {
     pub fn new(start_dir: Option<PathBuf>) -> Self {
         Self {
             state: Mutex::new(ModuleState::Registered),
-            start_dir: start_dir.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| default_start_dir())
-            }),
+            start_dir: start_dir
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| default_start_dir())),
             pending_spawns: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
@@ -87,9 +86,9 @@ impl FsExplorerModule {
             Some(m) => m,
             None => {
                 // Mux not available (config-time): queue for later
-                self.pending_spawns.lock().push_back(QueuedSpawnRequest {
-                    dir,
-                });
+                self.pending_spawns
+                    .lock()
+                    .push_back(QueuedSpawnRequest { dir });
                 return Ok(None);
             }
         };
@@ -97,8 +96,7 @@ impl FsExplorerModule {
         let size = config::configuration().initial_size(0, None);
         let domain_id = mux.default_domain().domain_id();
 
-        let (_input_rx, pane) =
-            allocate_fs_explorer_pane(domain_id, size, dir, None)?;
+        let (_input_rx, pane) = allocate_fs_explorer_pane(domain_id, size, dir, None)?;
 
         let pane_id = pane.pane_id();
         mux.add_pane(&pane)?;
@@ -115,7 +113,10 @@ impl FsExplorerModule {
         size: wezterm_term::TerminalSize,
         start_dir: Option<PathBuf>,
         term_config: Option<Arc<dyn wezterm_term::TerminalConfiguration + Send + Sync>>,
-    ) -> anyhow::Result<(crossbeam::channel::Receiver<FsExplorerInput>, Arc<dyn mux::pane::Pane>)> {
+    ) -> anyhow::Result<(
+        crossbeam::channel::Receiver<FsExplorerInput>,
+        Arc<dyn mux::pane::Pane>,
+    )> {
         let dir = start_dir.unwrap_or_else(|| self.start_dir.clone());
         allocate_fs_explorer_pane(domain_id, size, dir, term_config)
     }
@@ -204,13 +205,14 @@ impl Module for FsExplorerModule {
                     Some(m) => m,
                     None => {
                         // Config-time: Mux not yet available. Queue for later.
-                        pending_spawns.lock().push_back(QueuedSpawnRequest {
-                            dir,
-                        });
+                        pending_spawns.lock().push_back(QueuedSpawnRequest { dir });
                         log::info!(
                             "Lua: fs_explorer.spawn queued (Mux not available at config-time)"
                         );
-                        return Ok((mlua::Value::Nil, Some("spawn queued: Mux not available at config-time".to_string())));
+                        return Ok((
+                            mlua::Value::Nil,
+                            Some("spawn queued: Mux not available at config-time".to_string()),
+                        ));
                     }
                 };
 
@@ -235,10 +237,7 @@ impl Module for FsExplorerModule {
 
         // wezterm.fs_explorer.is_available()
         // Returns: true (the module is loaded and available)
-        fs_explorer_mod.set(
-            "is_available",
-            lua.create_function(|_, ()| Ok(true))?,
-        )?;
+        fs_explorer_mod.set("is_available", lua.create_function(|_, ()| Ok(true))?)?;
 
         // wezterm.fs_explorer.default_dir()
         // Returns: the default start directory for new explorer panes

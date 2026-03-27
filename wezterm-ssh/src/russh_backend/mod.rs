@@ -72,17 +72,17 @@
 //! [`russh`]: https://docs.rs/russh
 //! [`russh-sftp`]: https://docs.rs/russh-sftp
 
+mod channel;
 mod handler;
 mod session;
-mod channel;
 mod sftp;
 
 #[cfg(test)]
 mod tests;
 
-pub use session::RusshSession;
 pub use channel::RusshChannel;
-pub use sftp::{RusshSftp, RusshFile, RusshDir};
+pub use session::RusshSession;
+pub use sftp::{RusshDir, RusshFile, RusshSftp};
 
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;

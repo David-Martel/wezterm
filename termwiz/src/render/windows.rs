@@ -320,9 +320,7 @@ impl WindowsConsoleRenderer {
         for change in changes {
             match change {
                 Change::ClearScreen(color) => {
-                    let attr = CellAttributes::default()
-                        .set_background(*color)
-                        .clone();
+                    let attr = CellAttributes::default().set_background(*color).clone();
 
                     buffer.fill(
                         ' ',
@@ -334,9 +332,7 @@ impl WindowsConsoleRenderer {
                     buffer.set_cursor(0, 0, out)?;
                 }
                 Change::ClearToEndOfLine(color) => {
-                    let attr = CellAttributes::default()
-                        .set_background(*color)
-                        .clone();
+                    let attr = CellAttributes::default().set_background(*color).clone();
 
                     buffer.fill(
                         ' ',
@@ -347,9 +343,7 @@ impl WindowsConsoleRenderer {
                     );
                 }
                 Change::ClearToEndOfScreen(color) => {
-                    let attr = CellAttributes::default()
-                        .set_background(*color)
-                        .clone();
+                    let attr = CellAttributes::default().set_background(*color).clone();
 
                     buffer.fill(
                         ' ',
@@ -429,13 +423,7 @@ impl WindowsConsoleRenderer {
                     // move the cursor to the right spot
 
                     for y in 0..image.height {
-                        buffer.fill(
-                            ' ',
-                            0,
-                            buffer.cursor_x,
-                            y + buffer.cursor_y,
-                            image.width,
-                        );
+                        buffer.fill(' ', 0, buffer.cursor_x, y + buffer.cursor_y, image.width);
                     }
                     buffer.set_cursor(buffer.cursor_x + image.width, buffer.cursor_y, out)?;
                 }

@@ -1,13 +1,13 @@
 //! Startup optimization utilities for faster utility initialization
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use once_cell::sync::{Lazy, OnceCell};
-use parking_lot::Mutex;
-use tokio::sync::RwLock;
-use serde::{Serialize, Deserialize};
 use dashmap::DashMap;
 use futures::future::join_all;
+use once_cell::sync::{Lazy, OnceCell};
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 /// Lazy initializer for deferred resource loading
 pub struct LazyInitializer<T> {
@@ -56,7 +56,10 @@ impl PreloadedResources {
         }));
 
         let templates = Arc::new(DashMap::new());
-        templates.insert("default".to_string(), "Default template content".to_string());
+        templates.insert(
+            "default".to_string(),
+            "Default template content".to_string(),
+        );
 
         let assets = Arc::new(DashMap::new());
         assets.insert("icon.png".to_string(), vec![0u8; 1024]);
@@ -303,7 +306,8 @@ impl ParallelDependencyLoader {
     pub async fn load_all(&self) -> DashMap<String, Vec<u8>> {
         let results = DashMap::new();
 
-        let futures: Vec<_> = self.dependencies
+        let futures: Vec<_> = self
+            .dependencies
             .iter()
             .map(|dep| {
                 let name = dep.name.clone();
@@ -370,8 +374,11 @@ impl StartupPredictor {
         let mut total_weight = 0.0;
 
         for metric in history.iter() {
-            let config_similarity = 1.0 - ((config_size as f64 - metric.config_size as f64).abs() / 10000.0).min(1.0);
-            let dep_similarity = 1.0 - ((dependency_count as f64 - metric.dependency_count as f64).abs() / 100.0).min(1.0);
+            let config_similarity =
+                1.0 - ((config_size as f64 - metric.config_size as f64).abs() / 10000.0).min(1.0);
+            let dep_similarity = 1.0
+                - ((dependency_count as f64 - metric.dependency_count as f64).abs() / 100.0)
+                    .min(1.0);
 
             let weight = config_similarity * dep_similarity;
             total_duration += metric.duration.mul_f64(weight);

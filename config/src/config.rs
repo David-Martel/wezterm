@@ -889,7 +889,6 @@ pub struct Config {
 }
 impl_lua_conversion_dynamic!(Config);
 
-
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -953,9 +952,13 @@ fn parse_table(chars: &mut Peekable<Chars>) -> Result<(), ()> {
             chars.next(); // '['
             parse_expr(chars)?;
             skip_whitespace(chars);
-            if chars.next() != Some(']') { return Err(()); }
+            if chars.next() != Some(']') {
+                return Err(());
+            }
             skip_whitespace(chars);
-            if chars.next() != Some('=') { return Err(()); }
+            if chars.next() != Some('=') {
+                return Err(());
+            }
             skip_whitespace(chars);
             parse_expr(chars)?;
         } else {
@@ -989,8 +992,13 @@ fn parse_table(chars: &mut Peekable<Chars>) -> Result<(), ()> {
 
         skip_whitespace(chars);
         match chars.peek() {
-            Some(&',') | Some(&';') => { chars.next(); },
-            Some(&'}') => { chars.next(); return Ok(()); },
+            Some(&',') | Some(&';') => {
+                chars.next();
+            }
+            Some(&'}') => {
+                chars.next();
+                return Ok(());
+            }
             _ => return Err(()),
         }
     }
@@ -999,7 +1007,16 @@ fn parse_table(chars: &mut Peekable<Chars>) -> Result<(), ()> {
 fn parse_number(chars: &mut Peekable<Chars>) -> Result<(), ()> {
     let mut num_str = String::new();
     while let Some(&c) = chars.peek() {
-        if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E' || c == 'x' || c == 'X' || c.is_ascii_hexdigit() {
+        if c.is_ascii_digit()
+            || c == '.'
+            || c == '-'
+            || c == '+'
+            || c == 'e'
+            || c == 'E'
+            || c == 'x'
+            || c == 'X'
+            || c.is_ascii_hexdigit()
+        {
             num_str.push(c);
             chars.next();
         } else {

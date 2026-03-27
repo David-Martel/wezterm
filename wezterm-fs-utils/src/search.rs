@@ -298,7 +298,12 @@ mod tests {
     fn test_score_ordering() {
         let mut matcher = FuzzyMatcher::new();
 
-        let items = vec!["main.rs", "main_test.rs", "something_main.rs", "maintainer.rs"];
+        let items = vec![
+            "main.rs",
+            "main_test.rs",
+            "something_main.rs",
+            "maintainer.rs",
+        ];
         let matches = matcher.match_items("main", items);
 
         // First result should be exact prefix match "main.rs"
@@ -362,9 +367,7 @@ mod tests {
         let mut matcher = FuzzyMatcher::with_options(options);
 
         // Create many items that will all match
-        let items: Vec<String> = (0..100)
-            .map(|i| format!("file{}.rs", i))
-            .collect();
+        let items: Vec<String> = (0..100).map(|i| format!("file{}.rs", i)).collect();
 
         let matches = matcher.match_items("file", items);
 

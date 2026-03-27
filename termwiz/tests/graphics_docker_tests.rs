@@ -32,14 +32,7 @@ fn docker_available() -> bool {
 /// Run a Node.js script in Docker and return the output.
 fn run_node_in_docker(script: &str) -> Result<String, String> {
     let output = Command::new("docker")
-        .args([
-            "run",
-            "--rm",
-            "node:lts-slim",
-            "node",
-            "-e",
-            script,
-        ])
+        .args(["run", "--rm", "node:lts-slim", "node", "-e", script])
         .output()
         .map_err(|e| format!("Failed to run docker: {}", e))?;
 
@@ -433,7 +426,12 @@ mod infrastructure_tests {
         }
 
         let output = Command::new("docker")
-            .args(["images", "node:lts-slim", "--format", "{{.Repository}}:{{.Tag}}"])
+            .args([
+                "images",
+                "node:lts-slim",
+                "--format",
+                "{{.Repository}}:{{.Tag}}",
+            ])
             .output();
 
         match output {

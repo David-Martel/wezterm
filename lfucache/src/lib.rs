@@ -116,8 +116,6 @@ impl<K: Hash + Eq + Clone + Debug, V, S: Default + BuildHasher> LfuCache<K, V, S
     }
 
     fn bucket_for_key<Q: Hash>(&self, k: &Q) -> usize {
-        
-        
         (self.hasher.hash_one(&k) as usize) % self.buckets.len()
     }
 

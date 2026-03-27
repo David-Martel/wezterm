@@ -189,11 +189,7 @@ pub fn spawn_tls_listener(tls_server: &TlsDomainServer) -> Result<(), Error> {
     ))?;
 
     // Build server config with client certificate verification
-    let config = build_server_config_with_client_verifier(
-        &full_cert_pem,
-        &key_pem,
-        root_store,
-    )?;
+    let config = build_server_config_with_client_verifier(&full_cert_pem, &key_pem, root_store)?;
 
     log::info!("listening with TLS on {:?}", tls_server.bind_address);
 
