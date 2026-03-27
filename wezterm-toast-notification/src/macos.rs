@@ -178,19 +178,23 @@ pub fn show_notif(toast: ToastNotification) -> Result<(), Box<dyn std::error::Er
             Some(&RcBlock::new(move |err: *mut NSError| {
                 if err.is_null() {
                     if let Some(timeout) = toast.timeout {
-                        // Spawn a thread to wait. This could be more efficient.
-                        // We cannot simply use performSelector:withObject:afterDelay:
-                        // because we're not guaranteed to be called from the main
-                        // thread.  We also don't have access to the executor machinery
-                        // from the window crate here, so we just do this basic take.
                         let identifier = identifier.clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(timeout);
-                            // Remove this notification
-                            let ident_array =
-                                NSArray::from_retained_slice(&[NSString::from_str(&identifier)]);
-                            CENTER.removeDeliveredNotificationsWithIdentifiers(&ident_array);
-                        });
+
+                        extern "C" {
+                            fn dispatch_get_global_queue(identifier: isize, flags: usize) -> *mut std::ffi::c_void;
+                            fn dispatch_time(when: u64, delta: i64) -> u64;
+                            fn dispatch_after(when: u64, queue: *mut std::ffi::c_void, block: *mut block2::Block<dyn Fn()>);
+                        }
+
+                        unsafe {
+                            let queue = dispatch_get_global_queue(0, 0); // DISPATCH_QUEUE_PRIORITY_DEFAULT
+                            let when = dispatch_time(0, timeout.as_nanos() as i64); // DISPATCH_TIME_NOW = 0
+                            let block = block2::RcBlock::new(move || {
+                                let ident_array = NSArray::from_retained_slice(&[NSString::from_str(&identifier)]);
+                                CENTER.removeDeliveredNotificationsWithIdentifiers(&ident_array);
+                            });
+                            dispatch_after(when, queue, &*block as *const _ as *mut _);
+                        }
                     }
                 } else {
                     log::error!("notif failed {}. {NEEDS_SIGN}", ns_error_to_string(err));
