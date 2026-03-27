@@ -88,18 +88,48 @@ impl<'a> ProbeCapabilities<'a> {
         let xt_version = CSI::Device(Box::new(Device::RequestTerminalNameAndVersion));
         let dev_attributes = CSI::Device(Box::new(Device::RequestPrimaryDeviceAttributes));
 
+        let mut term = vec![];
+        let mut parser = Parser::new();
+        let mut done = false;
+
         if tmux_escape {
             write!(self.write, "{TMUX_BEGIN}{xt_version}{TMUX_END}")?;
             self.write.flush()?;
-            std::thread::sleep(std::time::Duration::from_millis(100));
+
+            let start = std::time::Instant::now();
+            let timeout = std::time::Duration::from_millis(100);
+
+            while !done && start.elapsed() < timeout {
+                let mut byte = [0u8];
+                match self.read.read(&mut byte) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        parser.parse(&byte, |action| {
+                            match action {
+                                Action::Esc(Esc::Code(EscCode::StringTerminator)) => {}
+                                Action::DeviceControl(dev) => {
+                                    if let DeviceControlMode::Data(b) = dev {
+                                        term.push(b);
+                                    }
+                                }
+                                _ => {
+                                    done = true;
+                                }
+                            }
+                        });
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                    }
+                    Err(e) => return Err(e.into()),
+                }
+            }
+
             write!(self.write, "{dev_attributes}")?;
         } else {
             write!(self.write, "{xt_version}{dev_attributes}")?;
         }
         self.write.flush()?;
-        let mut term = vec![];
-        let mut parser = Parser::new();
-        let mut done = false;
 
         while !done {
             let mut byte = [0u8];
@@ -149,23 +179,6 @@ impl<'a> ProbeCapabilities<'a> {
             write!(self.write, "{TMUX_BEGIN}{query_pixels}{TMUX_END}")?;
         }
 
-        if is_tmux || cfg!(windows) {
-            self.write.flush()?;
-            // I really wanted to avoid a delay here, but tmux and conpty will
-            // both re-order the response to dev_attributes before sending the
-            // response for the passthru of query_pixels if we don't delay.
-            // The delay is potentially imperfect for things like a laggy ssh
-            // connection. The consequence of the timing being wrong is that
-            // we won't be able to reason about the pixel dimensions, which is
-            // "OK", but that was kinda the whole point of probing this way
-            // vs. termios.
-
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-
-        write!(self.write, "{dev_attributes}")?;
-        self.write.flush()?;
-
         let mut parser = Parser::new();
         let mut done = false;
         let mut size = ScreenSize {
@@ -174,6 +187,67 @@ impl<'a> ProbeCapabilities<'a> {
             xpixel: 0,
             ypixel: 0,
         };
+
+        if is_tmux || cfg!(windows) {
+            self.write.flush()?;
+
+            let start = std::time::Instant::now();
+            let timeout = std::time::Duration::from_millis(100);
+
+            while !done && start.elapsed() < timeout {
+                let mut byte = [0u8];
+                match self.read.read(&mut byte) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        parser.parse(&byte, |action| {
+                            match action {
+                                Action::DeviceControl(_) => {}
+                                Action::Esc(Esc::Code(EscCode::StringTerminator)) => {}
+                                Action::CSI(csi) => match csi {
+                                    CSI::Window(win) => match *win {
+                                        Window::ResizeWindowCells { width, height } => {
+                                            let width = width.unwrap_or(1);
+                                            let height = height.unwrap_or(1);
+                                            if width > 0 && height > 0 {
+                                                let width = width as usize;
+                                                let height = height as usize;
+                                                if swapped_cols_rows {
+                                                    size.rows = width;
+                                                    size.cols = height;
+                                                } else {
+                                                    size.rows = height;
+                                                    size.cols = width;
+                                                }
+                                            }
+                                        }
+                                        Window::ReportCellSizePixelsResponse { width, height } => {
+                                            let width = width.unwrap_or(1);
+                                            let height = height.unwrap_or(1);
+                                            if width > 0 && height > 0 {
+                                                let width = width as usize;
+                                                let height = height as usize;
+                                                size.xpixel = width;
+                                                size.ypixel = height;
+                                            }
+                                        }
+                                        _ => done = true,
+                                    },
+                                    _ => done = true,
+                                },
+                                _ => done = true,
+                            }
+                        });
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                    }
+                    Err(e) => return Err(e.into()),
+                }
+            }
+        }
+
+        write!(self.write, "{dev_attributes}")?;
+        self.write.flush()?;
 
         while !done {
             let mut byte = [0u8];
