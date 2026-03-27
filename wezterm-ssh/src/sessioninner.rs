@@ -57,6 +57,9 @@ pub(crate) struct SessionInner {
 impl Drop for SessionInner {
     fn drop(&mut self) {
         log::trace!("Dropping SessionInner");
+        self.channels.clear();
+        self.files.clear();
+        self.dirs.clear();
     }
 }
 
@@ -398,8 +401,20 @@ impl SessionInner {
                 .with_context(|| format!("binding to {bind_addr:?}"))?;
         }
 
-        sock.connect(&addr.into())
-            .with_context(|| format!("Connecting to {hostname}:{port} ({addr:?})"))?;
+        if let Some(timeout) = self.config.get("connecttimeout") {
+            let timeout: u64 = timeout.parse().unwrap_or(0);
+            if timeout > 0 {
+                sock.connect_timeout(&addr.into(), std::time::Duration::from_secs(timeout))
+                    .with_context(|| format!("Connecting to {hostname}:{port} ({addr:?})"))?;
+            } else {
+                sock.connect(&addr.into())
+                    .with_context(|| format!("Connecting to {hostname}:{port} ({addr:?})"))?;
+            }
+        } else {
+            sock.connect(&addr.into())
+                .with_context(|| format!("Connecting to {hostname}:{port} ({addr:?})"))?;
+        }
+
         Ok((sock, None))
     }
 

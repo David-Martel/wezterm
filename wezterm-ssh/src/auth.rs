@@ -146,11 +146,10 @@ impl crate::sessioninner::SessionInner {
                 }],
                 reply,
             }))
-            .unwrap();
+            .context("Failed to send Authenticate request")?;
 
             let mut answers = smol::block_on(answers.recv())
-                .context("waiting for authentication answers from user")
-                .unwrap();
+                .context("waiting for authentication answers from user")?;
             Ok(answers.remove(0))
         });
 
@@ -228,11 +227,10 @@ impl crate::sessioninner::SessionInner {
                         }],
                         reply,
                     }))
-                    .unwrap();
+                    .context("sending Authenticate request to user")?;
 
                 let mut answers = smol::block_on(answers.recv())
-                    .context("waiting for authentication answers from user")
-                    .unwrap();
+                    .context("waiting for authentication answers from user")?;
                 let pw = answers.remove(0);
 
                 match sess.userauth_password(None, Some(&pw))? {

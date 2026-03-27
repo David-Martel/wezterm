@@ -1,4 +1,6 @@
-use super::{Metadata, SessionRequest, SessionSender, SftpChannelResult, SftpRequest};
+use super::{
+    Metadata, SessionRequest, SessionSender, SftpChannelError, SftpChannelResult, SftpRequest,
+};
 use smol::channel::{bounded, Sender};
 use smol::future::FutureExt;
 use std::future::Future;
@@ -90,20 +92,23 @@ impl File {
     ///
     /// See [`ssh2::File::setstat`] for more information.
     pub async fn set_metadata(&self, metadata: Metadata) -> SftpChannelResult<()> {
+        let tx = self.tx.as_ref().ok_or_else(|| {
+            SftpChannelError::FileIo(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Session dropped",
+            ))
+        })?;
         let (reply, rx) = bounded(1);
-        self.tx
-            .as_ref()
-            .unwrap()
-            .send(SessionRequest::Sftp(SftpRequest::File(
-                FileRequest::SetMetadata(
-                    SetMetadataFile {
-                        file_id: self.file_id,
-                        metadata,
-                    },
-                    reply,
-                ),
-            )))
-            .await?;
+        tx.send(SessionRequest::Sftp(SftpRequest::File(
+            FileRequest::SetMetadata(
+                SetMetadataFile {
+                    file_id: self.file_id,
+                    metadata,
+                },
+                reply,
+            ),
+        )))
+        .await?;
         rx.recv().await??;
         Ok(())
     }
@@ -112,14 +117,17 @@ impl File {
     ///
     /// See [`ssh2::File::stat`] for more information.
     pub async fn metadata(&self) -> SftpChannelResult<Metadata> {
+        let tx = self.tx.as_ref().ok_or_else(|| {
+            SftpChannelError::FileIo(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Session dropped",
+            ))
+        })?;
         let (reply, rx) = bounded(1);
-        self.tx
-            .as_ref()
-            .unwrap()
-            .send(SessionRequest::Sftp(SftpRequest::File(
-                FileRequest::Metadata(self.file_id, reply),
-            )))
-            .await?;
+        tx.send(SessionRequest::Sftp(SftpRequest::File(
+            FileRequest::Metadata(self.file_id, reply),
+        )))
+        .await?;
         let result = rx.recv().await??;
         Ok(result)
     }
@@ -129,15 +137,18 @@ impl File {
     ///
     /// See [`ssh2::File::fsync`] for more information.
     pub async fn fsync(&self) -> SftpChannelResult<()> {
+        let tx = self.tx.as_ref().ok_or_else(|| {
+            SftpChannelError::FileIo(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Session dropped",
+            ))
+        })?;
         let (reply, rx) = bounded(1);
-        self.tx
-            .as_ref()
-            .unwrap()
-            .send(SessionRequest::Sftp(SftpRequest::File(FileRequest::Fsync(
-                self.file_id,
-                reply,
-            ))))
-            .await?;
+        tx.send(SessionRequest::Sftp(SftpRequest::File(FileRequest::Fsync(
+            self.file_id,
+            reply,
+        ))))
+        .await?;
         rx.recv().await??;
         Ok(())
     }
@@ -154,7 +165,15 @@ impl smol::io::AsyncRead for File {
                 .await
                 .map_err(|x| io::Error::other(x))
         }
-        let tx = self.tx.as_ref().unwrap().clone();
+        let tx = match self.tx.as_ref() {
+            Some(tx) => tx.clone(),
+            None => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "Session dropped",
+                )))
+            }
+        };
         let file_id = self.file_id;
 
         let poll = self
@@ -193,7 +212,15 @@ impl smol::io::AsyncWrite for File {
                 .map_err(|x| io::Error::other(x))
         }
 
-        let tx = self.tx.as_ref().unwrap().clone();
+        let tx = match self.tx.as_ref() {
+            Some(tx) => tx.clone(),
+            None => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "Session dropped",
+                )))
+            }
+        };
         let file_id = self.file_id;
 
         let poll = self
@@ -216,7 +243,15 @@ impl smol::io::AsyncWrite for File {
                 .map_err(|x| io::Error::other(x))
         }
 
-        let tx = self.tx.as_ref().unwrap().clone();
+        let tx = match self.tx.as_ref() {
+            Some(tx) => tx.clone(),
+            None => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "Session dropped",
+                )))
+            }
+        };
         let file_id = self.file_id;
 
         let poll = self
@@ -239,7 +274,15 @@ impl smol::io::AsyncWrite for File {
                 .map_err(|x| io::Error::other(x))
         }
 
-        let tx = self.tx.as_ref().unwrap().clone();
+        let tx = match self.tx.as_ref() {
+            Some(tx) => tx.clone(),
+            None => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "Session dropped",
+                )))
+            }
+        };
         let file_id = self.file_id;
 
         let poll = self

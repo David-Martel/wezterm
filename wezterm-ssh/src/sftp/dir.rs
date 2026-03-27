@@ -57,15 +57,16 @@ impl Dir {
     ///
     /// See [`ssh2::Dir::readdir`] for more information.
     pub async fn read_dir(&self) -> anyhow::Result<(Utf8PathBuf, Metadata)> {
-        let (reply, rx) = bounded(1);
-        self.tx
+        let tx = self
+            .tx
             .as_ref()
-            .unwrap()
-            .send(SessionRequest::Sftp(SftpRequest::Dir(DirRequest::ReadDir(
-                self.dir_id,
-                reply,
-            ))))
-            .await?;
+            .ok_or_else(|| anyhow::anyhow!("Session dropped"))?;
+        let (reply, rx) = bounded(1);
+        tx.send(SessionRequest::Sftp(SftpRequest::Dir(DirRequest::ReadDir(
+            self.dir_id,
+            reply,
+        ))))
+        .await?;
         let result = rx.recv().await??;
         Ok(result)
     }
