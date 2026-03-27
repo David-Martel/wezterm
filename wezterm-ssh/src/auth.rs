@@ -134,7 +134,7 @@ impl crate::sessioninner::SessionInner {
         // Set the callback for pubkey auth
         sess.set_auth_callback(move |prompt, echo, _verify, identity| {
             let (reply, answers) = bounded(1);
-            tx.try_send(SessionEvent::Authenticate(AuthenticationEvent {
+            if let Err(e) = tx.try_send(SessionEvent::Authenticate(AuthenticationEvent {
                 username: "".to_string(),
                 instructions: "".to_string(),
                 prompts: vec![AuthenticationPrompt {
@@ -145,11 +145,18 @@ impl crate::sessioninner::SessionInner {
                     echo,
                 }],
                 reply,
-            }))
-            .context("Failed to send Authenticate request")?;
+            })) {
+                log::error!("Failed to send Authenticate request: {}", e);
+                return Err(());
+            }
 
-            let mut answers = smol::block_on(answers.recv())
-                .context("waiting for authentication answers from user")?;
+            let mut answers = match smol::block_on(answers.recv()) {
+                Ok(answers) => answers,
+                Err(e) => {
+                    log::error!("waiting for authentication answers from user: {}", e);
+                    return Err(());
+                }
+            };
             Ok(answers.remove(0))
         });
 
