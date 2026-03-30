@@ -288,6 +288,8 @@ impl MessageRouter {
             active_connections: self.connection_manager.get_active_count(),
             total_messages: self.connection_manager.get_total_messages(),
             max_connections: 10, // Should come from config
+            oldest_connection_age_secs: self.connection_manager.oldest_connection_age_secs(),
+            connection_uptimes: self.connection_manager.connection_ages(),
         };
 
         Ok(serde_json::to_value(status)?)
@@ -518,5 +520,45 @@ mod tests {
             rx.try_recv().is_err(),
             "channel should be empty — no event should have been delivered"
         );
+    }
+
+    #[tokio::test]
+    async fn test_status_includes_oldest_connection_age() {
+        let cm = Arc::new(ConnectionManager::new(10));
+        let router = MessageRouter::new(Arc::clone(&cm), "0.1.0".to_string());
+
+        // No connections — oldest_connection_age_secs should be null, uptimes empty
+        let status_value = router
+            .handle_status()
+            .await
+            .expect("handle_status should succeed");
+        let status: DaemonStatus =
+            serde_json::from_value(status_value).expect("status should deserialize");
+        assert_eq!(status.oldest_connection_age_secs, None);
+        assert!(status.connection_uptimes.is_empty());
+
+        // Add a connection — oldest_connection_age_secs should be Some
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn = Connection::new(tx);
+        let conn_id = conn.id.clone();
+        cm.add_connection(conn).expect("add connection in test");
+
+        let status_value = router
+            .handle_status()
+            .await
+            .expect("handle_status should succeed");
+        let status: DaemonStatus =
+            serde_json::from_value(status_value).expect("status should deserialize");
+        assert!(
+            status.oldest_connection_age_secs.is_some(),
+            "should report oldest connection age when connections exist"
+        );
+        assert!(
+            status.oldest_connection_age_secs.expect("checked above") < 5,
+            "freshly created connection should be < 5s old"
+        );
+        assert_eq!(status.active_connections, 1);
+        assert_eq!(status.connection_uptimes.len(), 1);
+        assert_eq!(status.connection_uptimes[0].0, conn_id);
     }
 }

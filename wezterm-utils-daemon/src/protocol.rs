@@ -232,6 +232,10 @@ pub struct DaemonStatus {
     pub active_connections: usize,
     pub total_messages: u64,
     pub max_connections: usize,
+    /// Uptime (seconds) of the longest-lived active connection, if any.
+    pub oldest_connection_age_secs: Option<u64>,
+    /// Per-connection uptime: `[(connection_id, uptime_seconds)]`.
+    pub connection_uptimes: Vec<(String, u64)>,
 }
 
 #[cfg(test)]
