@@ -71,13 +71,11 @@ impl Connection {
         self.update_activity();
     }
 
-    #[allow(dead_code)] // used in integration tests
     pub fn subscribe(&self, subscriptions: Vec<EventSubscription>) {
         self.subscriptions.write().extend(subscriptions);
         self.update_activity();
     }
 
-    #[allow(dead_code)] // used in integration tests
     pub fn unsubscribe(&self, event_types: &[String]) {
         self.subscriptions
             .write()
