@@ -10,9 +10,17 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
 
   local path_exists = shared.path_exists
   local mux = wezterm.mux
-  wezterm.GLOBAL.codex_ui_panel_state = wezterm.GLOBAL.codex_ui_panel_state or {}
-  wezterm.GLOBAL.codex_ui_panel_restore_done = wezterm.GLOBAL.codex_ui_panel_restore_done or {}
-  wezterm.GLOBAL.codex_ui_panel_preferences = wezterm.GLOBAL.codex_ui_panel_preferences or {}
+
+  -- Feature detection: prefer the Rust-native wezterm.panels API when available.
+  -- Falls back to wezterm.GLOBAL state tables for older binaries or contexts
+  -- that lack the module framework (e.g. wezterm-mux-server).
+  local has_rust_panels = wezterm.panels ~= nil
+
+  if not has_rust_panels then
+    wezterm.GLOBAL.codex_ui_panel_state = wezterm.GLOBAL.codex_ui_panel_state or {}
+    wezterm.GLOBAL.codex_ui_panel_restore_done = wezterm.GLOBAL.codex_ui_panel_restore_done or {}
+    wezterm.GLOBAL.codex_ui_panel_preferences = wezterm.GLOBAL.codex_ui_panel_preferences or {}
+  end
   local save_panel_preferences = nil
 
   local function normalize_preferences(preferences)
@@ -24,17 +32,37 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
   end
 
   local function replace_preferences(preferences)
+    if has_rust_panels then
+      local norm = normalize_preferences(preferences)
+      for name, open in pairs(norm) do
+        wezterm.panels.set_preference(name, open)
+      end
+      return norm
+    end
     wezterm.GLOBAL.codex_ui_panel_preferences = normalize_preferences(preferences)
     return wezterm.GLOBAL.codex_ui_panel_preferences
   end
 
-  replace_preferences(wezterm.GLOBAL.codex_ui_panel_preferences)
+  if not has_rust_panels then
+    replace_preferences(wezterm.GLOBAL.codex_ui_panel_preferences)
+  end
 
   local function preferences_state()
+    if has_rust_panels then
+      return wezterm.panels.get_preferences()
+    end
     return wezterm.GLOBAL.codex_ui_panel_preferences
   end
 
   local function persist_preferences()
+    if has_rust_panels then
+      -- Rust API persists to JSON automatically; still invoke the callback
+      -- in case configure_persistence wired additional side-effects.
+      if save_panel_preferences then
+        return save_panel_preferences(preferences_state())
+      end
+      return true
+    end
     if save_panel_preferences then
       return save_panel_preferences(preferences_state())
     end
@@ -42,6 +70,11 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
   end
 
   local function set_panel_intent(panel_name, is_open)
+    if has_rust_panels then
+      wezterm.panels.set_preference(panel_name, is_open == true)
+      persist_preferences()
+      return
+    end
     local state = preferences_state()
     state[panel_name] = is_open == true
     persist_preferences()
@@ -53,11 +86,12 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
   end
 
   local function window_state_key(window)
-    -- share-data objects behind wezterm.GLOBAL only accept string object keys.
+    -- GLOBAL tables only accept string keys; Rust API takes the raw u64.
     return tostring(window:window_id())
   end
 
   local function panel_state_for_window(window)
+    -- Only used in the GLOBAL fallback path.
     local state = wezterm.GLOBAL.codex_ui_panel_state
     local window_id = window_state_key(window)
     state[window_id] = state[window_id] or {}
@@ -65,7 +99,12 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
   end
 
   local function tracked_panel_pane(window, panel_name)
-    local pane_id = panel_state_for_window(window)[panel_name]
+    local pane_id
+    if has_rust_panels then
+      pane_id = wezterm.panels.get_pane_id(window:window_id(), panel_name)
+    else
+      pane_id = panel_state_for_window(window)[panel_name]
+    end
     if not pane_id then
       return nil
     end
@@ -75,19 +114,35 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
       return pane
     end
 
-    panel_state_for_window(window)[panel_name] = nil
+    -- Pane no longer exists in the mux — untrack it.
+    if has_rust_panels then
+      wezterm.panels.untrack(window:window_id(), panel_name)
+    else
+      panel_state_for_window(window)[panel_name] = nil
+    end
     return nil
   end
 
   local function clear_tracked_panel(window, panel_name)
-    panel_state_for_window(window)[panel_name] = nil
+    if has_rust_panels then
+      wezterm.panels.untrack(window:window_id(), panel_name)
+    else
+      panel_state_for_window(window)[panel_name] = nil
+    end
   end
 
   local function mark_window_restored(window)
-    wezterm.GLOBAL.codex_ui_panel_restore_done[window_state_key(window)] = true
+    if has_rust_panels then
+      wezterm.panels.mark_restore_done(window:window_id())
+    else
+      wezterm.GLOBAL.codex_ui_panel_restore_done[window_state_key(window)] = true
+    end
   end
 
   local function window_restored(window)
+    if has_rust_panels then
+      return wezterm.panels.is_restore_done(window:window_id())
+    end
     return wezterm.GLOBAL.codex_ui_panel_restore_done[window_state_key(window)] == true
   end
 
@@ -295,13 +350,21 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
     },
   }
 
+  local function track_panel(window, panel_name, pane_id)
+    if has_rust_panels then
+      wezterm.panels.track(window:window_id(), panel_name, pane_id)
+    else
+      panel_state_for_window(window)[panel_name] = pane_id
+    end
+  end
+
   local function open_panel(window, pane, panel_name)
     local def = panel_defs[panel_name]
     local opts, module_pane_id = def.launch(pane)
 
     if module_pane_id then
       -- Module API created the pane directly (Tier 1) — no split needed.
-      panel_state_for_window(window)[panel_name] = module_pane_id
+      track_panel(window, panel_name, module_pane_id)
       return nil
     end
 
@@ -317,7 +380,7 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
       args = opts.args,
       set_environment_variables = opts.env,
     })
-    panel_state_for_window(window)[panel_name] = new_pane:pane_id()
+    track_panel(window, panel_name, new_pane:pane_id())
     return new_pane
   end
 
