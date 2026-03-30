@@ -219,5 +219,19 @@ test-postbuild:
 test-integration:
     pwsh -NoLogo -NoProfile -File tools/Test-Integration.ps1
 
+# Run GUI launch test (requires installed binaries, opens a window for 15s)
+test-gui:
+    pwsh -NoLogo -NoProfile -File tools/test-gui-launch.ps1
+
+# Run daemon IPC round-trip test
+test-daemon-ipc:
+    pwsh -NoLogo -NoProfile -File tools/test-daemon-ipc.ps1
+
 # Run all runtime tests (post-build + integration)
 test-runtime: test-postbuild test-integration
+
+# Run all tests: unit + post-build + integration + GUI + daemon IPC
+test-all: test-nextest test-postbuild test-integration test-gui test-daemon-ipc
+
+# Run all tests except GUI (safe for headless/CI)
+test-all-headless: test-nextest test-postbuild test-integration test-daemon-ipc

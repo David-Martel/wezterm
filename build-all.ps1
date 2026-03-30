@@ -119,6 +119,7 @@ $Script:Config = @{
     InstallPath = $InstallPath
     BundlePath = Join-Path $InstallPath 'wezterm-app'
     BundleToolPath = Join-Path (Join-Path $InstallPath 'wezterm-app') 'tools'
+    WeztermConfigFile = "$env:USERPROFILE\.wezterm.lua"
     BuildProfile = $BuildProfile
     CargoTargetDir = "$env:USERPROFILE\.cargo\shared-target"
 
@@ -726,11 +727,11 @@ function Install-WezTermLaunchers {
     $launchers = @(
         @{
             Path = Join-Path $Script:Config.InstallPath 'wezterm-launch.cmd'
-            Content = '@echo off`r`nstart "" "' + $guiPath + '" %*`r`n'
+            Content = '@echo off`r`nsetlocal`r`nif /I "%WEZTERM_SKIP_PRELAUNCH_VALIDATION%"=="1" goto launch`r`n"' + $cliPath + '" --config-file "%USERPROFILE%\.wezterm.lua" validate-config --quiet`r`nif errorlevel 1 exit /b %errorlevel%`r`n:launch`r`nstart "" "' + $guiPath + '" %*`r`n'
         }
         @{
             Path = Join-Path $Script:Config.InstallPath 'wezterm-gui.cmd'
-            Content = '@echo off`r`nstart "" "' + $guiPath + '" %*`r`n'
+            Content = '@echo off`r`nsetlocal`r`nif /I "%WEZTERM_SKIP_PRELAUNCH_VALIDATION%"=="1" goto launch`r`n"' + $cliPath + '" --config-file "%USERPROFILE%\.wezterm.lua" validate-config --quiet`r`nif errorlevel 1 exit /b %errorlevel%`r`n:launch`r`nstart "" "' + $guiPath + '" %*`r`n'
         }
         @{
             Path = Join-Path $Script:Config.InstallPath 'wezterm-cli.cmd'
@@ -745,8 +746,25 @@ param(
 )
 
 `$gui = '$guiPath'
+`$cli = '$cliPath'
+`$configFile = Join-Path `$env:USERPROFILE '.wezterm.lua'
 if (-not (Test-Path `$gui)) {
     throw "WezTerm GUI bundle not found: `$gui"
+}
+if (-not (Test-Path `$cli)) {
+    throw "WezTerm CLI bundle not found: `$cli"
+}
+
+`$skipValue = ''
+if (`$null -ne `$env:WEZTERM_SKIP_PRELAUNCH_VALIDATION) {
+    `$skipValue = `$env:WEZTERM_SKIP_PRELAUNCH_VALIDATION.ToLowerInvariant()
+}
+`$skipValidation = @('1', 'true', 'yes', 'on') -contains `$skipValue
+if (-not `$skipValidation) {
+    & `$cli --config-file `$configFile validate-config --quiet
+    if (`$LASTEXITCODE -ne 0) {
+        throw "WezTerm config validation failed for `$configFile"
+    }
 }
 
 Start-Process -FilePath `$gui -ArgumentList `$Args | Out-Null
@@ -760,11 +778,56 @@ Start-Process -FilePath `$gui -ArgumentList `$Args | Out-Null
     }
 }
 
+function Invoke-WezTermConfigValidation {
+    param(
+        [switch]$Quiet
+    )
+
+    $cliPath = Join-Path $Script:Config.BundlePath 'wezterm.exe'
+    $configPath = $Script:Config.WeztermConfigFile
+
+    if (-not (Test-Path $cliPath)) {
+        if (-not $Quiet) {
+            Write-Status "WezTerm CLI bundle missing at $cliPath" -Level Warning
+        }
+        return $false
+    }
+
+    if (-not (Test-Path $configPath)) {
+        if (-not $Quiet) {
+            Write-Status "WezTerm config file missing at $configPath" -Level Warning
+        }
+        return $false
+    }
+
+    $output = & $cliPath --config-file $configPath validate-config --quiet 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        if (-not $Quiet) {
+            Write-Status "WezTerm config validation passed" -Level Success
+        }
+        return $true
+    }
+
+    if (-not $Quiet) {
+        $message = ($output | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($message)) {
+            $message = "validator exited with code $LASTEXITCODE"
+        }
+        Write-Status "WezTerm config validation failed: $message" -Level Error
+    }
+    return $false
+}
+
 function Test-WezTermGuiLaunch {
     $guiPath = Join-Path $Script:Config.BundlePath 'wezterm-gui.exe'
 
     if (-not (Test-Path $guiPath)) {
         Write-Status "WezTerm GUI bundle missing at $guiPath" -Level Warning
+        return $false
+    }
+
+    if (-not (Invoke-WezTermConfigValidation -Quiet)) {
+        Write-Status "Skipping GUI launch test because config validation failed" -Level Error
         return $false
     }
 
@@ -936,6 +999,53 @@ function Invoke-VerificationTests {
             $testResults.Passed += "wezterm-gui-launch"
         } else {
             $testResults.Failed += "wezterm-gui-launch"
+        }
+    }
+
+    # Extended test suites (if scripts exist)
+    $postBuildScript = Join-Path $Script:Config.RootDir 'tools\Test-PostBuild.ps1'
+    if (Test-Path $postBuildScript) {
+        Write-Step "Running post-build test suite..."
+        $postBuildResult = & pwsh -NoLogo -NoProfile -File $postBuildScript `
+            -InstallDir $Script:Config.InstallPath -SkipGui
+        if ($LASTEXITCODE -eq 0) {
+            $testResults.Passed += 'post-build-suite'
+        } else {
+            $testResults.Failed += 'post-build-suite'
+        }
+    }
+
+    $integrationScript = Join-Path $Script:Config.RootDir 'tools\Test-Integration.ps1'
+    if (Test-Path $integrationScript) {
+        Write-Step "Running integration test suite..."
+        $integrationResult = & pwsh -NoLogo -NoProfile -File $integrationScript `
+            -InstallDir $Script:Config.InstallPath
+        if ($LASTEXITCODE -eq 0) {
+            $testResults.Passed += 'integration-suite'
+        } else {
+            $testResults.Failed += 'integration-suite'
+        }
+    }
+
+    $guiScript = Join-Path $Script:Config.RootDir 'tools\test-gui-launch.ps1'
+    if (Test-Path $guiScript) {
+        Write-Step "Running GUI launch test..."
+        & pwsh -NoLogo -NoProfile -File $guiScript -InstallDir $Script:Config.InstallPath
+        if ($LASTEXITCODE -eq 0) {
+            $testResults.Passed += 'gui-launch'
+        } else {
+            $testResults.Failed += 'gui-launch'
+        }
+    }
+
+    $ipcScript = Join-Path $Script:Config.RootDir 'tools\test-daemon-ipc.ps1'
+    if (Test-Path $ipcScript) {
+        Write-Step "Running daemon IPC round-trip test..."
+        & pwsh -NoLogo -NoProfile -File $ipcScript
+        if ($LASTEXITCODE -eq 0) {
+            $testResults.Passed += 'daemon-ipc'
+        } else {
+            $testResults.Failed += 'daemon-ipc'
         }
     }
 
