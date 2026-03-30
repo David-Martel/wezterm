@@ -37,9 +37,9 @@ Primary resource thread: `wezterm-resource-coordination-20260324`
 - [ ] Tier 4.K2: Register module domains with mux
 - [ ] Tier 4.K3: Add module configuration parsing
 - [x] Tier 4.L: Module Lua API surface — `wezterm.watcher.*` (watch/unwatch/poll_events/on_event), `wezterm.fs_explorer.*` (spawn/is_available), `wezterm.daemon.*` (ping/status/broadcast/register)
-- [ ] Tier 4.M: Example "hello world" module
+- [x] Tier 4.M: Example "hello world" module — `modules/hello.rs` with Lua API (`wezterm.hello.greet`, `wezterm.hello.info`), full lifecycle, 7 tests
 - [ ] Tier 4.N: AI/LLM integration (mistral.rs, streaming, MCP client)
-- [ ] Tier 4.O: Reach 85% test coverage for custom crates (currently ~73%, up from 68%)
+- [ ] Tier 4.O: Reach 85% test coverage for custom crates (currently ~80%, up from 73% — 60+ new daemon tests, 7 hello module tests added)
 
 ### Tier 5: Repo-Managed Runtime + Coordination Tooling — NEW
 - [ ] Tier 5.P: Validate repo-managed symlinked home config with GUI smoke test and Windows Terminal launch path
@@ -66,7 +66,7 @@ Primary resource thread: `wezterm-resource-coordination-20260324`
 - [x] Tier 7.D: Add Just targets `test-postbuild`, `test-integration`, `test-runtime`
 - [x] Tier 7.E: Add CI step in `windows-ci.yml` — install binaries + run integration tests (continue-on-error initially)
 - [ ] Tier 7.F: Harden integration tests — remove continue-on-error after first green CI run
-- [ ] Tier 7.G: Add watcher module integration test (start wezterm-watch, trigger file event, verify output)
+- [x] Tier 7.G: Add watcher module integration test (start wezterm-watch, trigger file event, verify output)
 - [ ] Tier 7.H: Add cross-subcommand integration test (daemon + watch coordination via IPC)
 
 ## Active Owners
@@ -141,7 +141,7 @@ Primary resource thread: `wezterm-resource-coordination-20260324`
 | Phase 1: Rendering + Config | 95% | Verification testing only |
 | Phase 2: Chrome Overhaul | 85% | Settings tab, click handlers |
 | Phase 3: Panel System | 75% | State persistence validation, Settings tab |
-| Phase 4: Rust Investment | 55% | Module framework integrated, daemon client done, subcommands wired, validate-config, runtime test harness |
+| Phase 4: Rust Investment | 65% | Module framework integrated, daemon complete, subcommands live, Lua bindings, example module, 103 daemon tests, runtime test harness |
 
 ## Known Constraints
 
