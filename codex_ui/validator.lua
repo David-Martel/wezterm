@@ -189,40 +189,83 @@ function M.register(wezterm, shared, opts)
     local errors = {}
     local warnings = {}
 
-    if utility_paths.state_dir then
-      for _, protected_root in ipairs(collect_reload_sensitive_roots(context)) do
-        if is_within_path(protected_root, utility_paths.state_dir) then
-          table.insert(
-            errors,
-            string.format(
-              'utility state_dir must stay outside config/reload roots to avoid reload loops: %s (under %s)',
-              utility_paths.state_dir,
-              protected_root
-            )
-          )
-          break
+    -- Delegate path/filesystem checks to Rust if the native API is available
+    if wezterm.validation then
+      -- State directory reload-loop safety
+      if utility_paths.state_dir then
+        local state_result = wezterm.validation.check_state_dir(
+          utility_paths.state_dir,
+          context.config_file or '',
+          context.home_dir or ''
+        )
+        if state_result then
+          append_messages(errors, state_result.errors)
+          append_messages(warnings, state_result.warnings)
         end
+      end
+
+      -- Binary existence checks
+      local bins = {}
+      if utility_paths.explorer_bin and utility_bins.explorer == false then
+        table.insert(bins, { name = 'explorer', path = utility_paths.explorer_bin })
+      end
+      if utility_paths.watcher_bin and utility_bins.watcher == false then
+        table.insert(bins, { name = 'watcher', path = utility_paths.watcher_bin })
+      end
+      if #bins > 0 then
+        local bin_result = wezterm.validation.check_binaries(bins)
+        if bin_result then
+          append_messages(warnings, bin_result.warnings)
+        end
+      end
+
+      -- Config file/dir existence
+      local config_result = wezterm.validation.check_config_paths(
+        context.config_file,
+        context.config_dir
+      )
+      if config_result then
+        append_messages(errors, config_result.errors)
+        append_messages(warnings, config_result.warnings)
+      end
+    else
+      -- Fallback: existing Lua path checks when Rust API is unavailable
+      if utility_paths.state_dir then
+        for _, protected_root in ipairs(collect_reload_sensitive_roots(context)) do
+          if is_within_path(protected_root, utility_paths.state_dir) then
+            table.insert(
+              errors,
+              string.format(
+                'utility state_dir must stay outside config/reload roots to avoid reload loops: %s (under %s)',
+                utility_paths.state_dir,
+                protected_root
+              )
+            )
+            break
+          end
+        end
+      end
+
+      if utility_paths.explorer_bin and utility_bins.explorer == false
+        and not shared.path_exists(utility_paths.explorer_bin)
+      then
+        table.insert(
+          warnings,
+          string.format('optional explorer binary missing: %s', utility_paths.explorer_bin)
+        )
+      end
+
+      if utility_paths.watcher_bin and utility_bins.watcher == false
+        and not shared.path_exists(utility_paths.watcher_bin)
+      then
+        table.insert(
+          warnings,
+          string.format('optional watcher binary missing: %s', utility_paths.watcher_bin)
+        )
       end
     end
 
-    if utility_paths.explorer_bin and utility_bins.explorer == false
-      and not shared.path_exists(utility_paths.explorer_bin)
-    then
-      table.insert(
-        warnings,
-        string.format('optional explorer binary missing: %s', utility_paths.explorer_bin)
-      )
-    end
-
-    if utility_paths.watcher_bin and utility_bins.watcher == false
-      and not shared.path_exists(utility_paths.watcher_bin)
-    then
-      table.insert(
-        warnings,
-        string.format('optional watcher binary missing: %s', utility_paths.watcher_bin)
-      )
-    end
-
+    -- wezterm-utils.config module validation (Lua-only, always runs)
     local config_ok, utils_config = pcall(require, 'wezterm-utils.config')
     if config_ok and utils_config and utils_config.validate then
       local valid, validation_errors = utils_config.validate({
