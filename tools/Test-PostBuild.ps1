@@ -667,6 +667,223 @@ function Test-Symlinks {
     }
 }
 
+function Test-Subcommands {
+    Write-Host "`n=== Subcommand Registration ===" -ForegroundColor Cyan
+
+    $weztermExe = Join-Path $InstallDir 'wezterm.exe'
+    if (-not (Test-Path $weztermExe)) {
+        Add-TestResult 'Subcommands' 'wezterm.exe' 'SKIP' 'Binary missing'
+        return
+    }
+
+    # Verify --help output lists custom subcommands (daemon, watch, explore)
+    $helpOutFile = Join-Path ([System.IO.Path]::GetTempPath()) "wezterm-help-$(Get-Random).txt"
+    $helpErrFile = "$helpOutFile.err"
+    try {
+        $env:WEZTERM_CONFIG_FILE = 'C:\__nonexistent_wezterm_config__.lua'
+        $proc = Start-Process -FilePath $weztermExe -ArgumentList '--help' `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput $helpOutFile `
+            -RedirectStandardError $helpErrFile
+        $exited = $proc.WaitForExit(30000)
+        Remove-Item Env:WEZTERM_CONFIG_FILE -ErrorAction SilentlyContinue
+
+        if (-not $exited) {
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+            Add-TestResult 'Subcommands' 'wezterm --help' 'FAIL' 'Timed out'
+            return
+        }
+
+        $helpText = ''
+        if (Test-Path $helpOutFile) {
+            $helpText = Get-Content $helpOutFile -Raw -ErrorAction SilentlyContinue
+        }
+        $helpErr = ''
+        if (Test-Path $helpErrFile) {
+            $helpErr = Get-Content $helpErrFile -Raw -ErrorAction SilentlyContinue
+        }
+        if (-not $helpText -and $helpErr) { $helpText = $helpErr }
+
+        if (-not $helpText -or $helpText.Length -lt 20) {
+            Add-TestResult 'Subcommands' 'wezterm --help' 'FAIL' 'No output captured'
+            return
+        }
+
+        Add-TestResult 'Subcommands' 'wezterm --help' 'PASS' "$($helpText.Length) chars"
+
+        # Check each custom subcommand is listed
+        $expectedSubs = @('daemon', 'watch', 'explore', 'validate-config')
+        foreach ($sub in $expectedSubs) {
+            if ($helpText -match $sub) {
+                Add-TestResult 'Subcommands' "Listed: $sub" 'PASS' 'Found in help output'
+            } else {
+                Add-TestResult 'Subcommands' "Listed: $sub" 'FAIL' 'Not found in help output'
+            }
+        }
+    } catch {
+        Add-TestResult 'Subcommands' 'wezterm --help' 'FAIL' $_.Exception.Message
+    } finally {
+        Remove-Item $helpOutFile, $helpErrFile -ErrorAction SilentlyContinue
+        Remove-Item Env:WEZTERM_CONFIG_FILE -ErrorAction SilentlyContinue
+    }
+
+    # Test each subcommand's own --help
+    $subHelps = @(
+        @{ Name = 'daemon';  Expect = 'daemon|IPC|utility' }
+        @{ Name = 'watch';   Expect = 'watch|files|changes' }
+        @{ Name = 'explore'; Expect = 'explore|filesystem|interactive' }
+    )
+    foreach ($sub in $subHelps) {
+        $subOutFile = Join-Path ([System.IO.Path]::GetTempPath()) "wezterm-$($sub.Name)-help-$(Get-Random).txt"
+        $subErrFile = "$subOutFile.err"
+        try {
+            $env:WEZTERM_CONFIG_FILE = 'C:\__nonexistent_wezterm_config__.lua'
+            $p = Start-Process -FilePath $weztermExe -ArgumentList "$($sub.Name) --help" `
+                -NoNewWindow -PassThru `
+                -RedirectStandardOutput $subOutFile `
+                -RedirectStandardError $subErrFile
+            $done = $p.WaitForExit(30000)
+            Remove-Item Env:WEZTERM_CONFIG_FILE -ErrorAction SilentlyContinue
+
+            if (-not $done) {
+                try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
+                Add-TestResult 'Subcommands' "$($sub.Name) --help" 'FAIL' 'Timed out'
+                continue
+            }
+
+            $subOut = ''
+            if (Test-Path $subOutFile) {
+                $subOut = Get-Content $subOutFile -Raw -ErrorAction SilentlyContinue
+            }
+            $subErr = ''
+            if (Test-Path $subErrFile) {
+                $subErr = Get-Content $subErrFile -Raw -ErrorAction SilentlyContinue
+            }
+            if (-not $subOut -and $subErr) { $subOut = $subErr }
+
+            if ($subOut -and $subOut.Length -gt 10) {
+                $preview = ($subOut -split "`n")[0].Trim()
+                if ($preview.Length -gt 80) { $preview = $preview.Substring(0, 77) + '...' }
+                Add-TestResult 'Subcommands' "$($sub.Name) --help" 'PASS' $preview
+            } else {
+                Add-TestResult 'Subcommands' "$($sub.Name) --help" 'FAIL' "No output (exit $($p.ExitCode))"
+            }
+        } catch {
+            Add-TestResult 'Subcommands' "$($sub.Name) --help" 'FAIL' $_.Exception.Message
+        } finally {
+            Remove-Item $subOutFile, $subErrFile -ErrorAction SilentlyContinue
+            Remove-Item Env:WEZTERM_CONFIG_FILE -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Test-ValidateConfig {
+    Write-Host "`n=== Validate-Config Subcommand ===" -ForegroundColor Cyan
+
+    $weztermExe = Join-Path $InstallDir 'wezterm.exe'
+    if (-not (Test-Path $weztermExe)) {
+        Add-TestResult 'ValidateConfig' 'wezterm.exe' 'SKIP' 'Binary missing'
+        return
+    }
+
+    $vcOutFile = Join-Path ([System.IO.Path]::GetTempPath()) "wezterm-vc-$(Get-Random).txt"
+    $vcErrFile = "$vcOutFile.err"
+    try {
+        # Run validate-config with JSON output (do NOT suppress config loading here)
+        $proc = Start-Process -FilePath $weztermExe `
+            -ArgumentList 'validate-config --format json' `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput $vcOutFile `
+            -RedirectStandardError $vcErrFile
+        $exited = $proc.WaitForExit(45000)
+
+        if (-not $exited) {
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+            Add-TestResult 'ValidateConfig' 'validate-config' 'FAIL' 'Timed out after 45s'
+            return
+        }
+
+        $rawOut = ''
+        if (Test-Path $vcOutFile) {
+            $rawOut = Get-Content $vcOutFile -Raw -ErrorAction SilentlyContinue
+        }
+        $rawErr = ''
+        if (Test-Path $vcErrFile) {
+            $rawErr = Get-Content $vcErrFile -Raw -ErrorAction SilentlyContinue
+        }
+
+        if (-not $rawOut -or $rawOut.Trim().Length -eq 0) {
+            # Some wezterm builds write JSON to stderr
+            if ($rawErr -and $rawErr.Trim().StartsWith('{')) {
+                $rawOut = $rawErr
+            } else {
+                Add-TestResult 'ValidateConfig' 'JSON output' 'FAIL' "No JSON output (exit $($proc.ExitCode))"
+                return
+            }
+        }
+
+        # Parse JSON
+        try {
+            $json = $rawOut | ConvertFrom-Json
+        } catch {
+            $snippet = if ($rawOut.Length -gt 120) { $rawOut.Substring(0, 117) + '...' } else { $rawOut.Trim() }
+            Add-TestResult 'ValidateConfig' 'JSON parse' 'FAIL' "Invalid JSON: $snippet"
+            return
+        }
+        Add-TestResult 'ValidateConfig' 'JSON parse' 'PASS' 'Valid JSON output'
+
+        # Check valid field
+        if ($null -ne $json.valid) {
+            if ($json.valid -eq $true) {
+                Add-TestResult 'ValidateConfig' 'valid=true' 'PASS' 'Configuration is valid'
+            } else {
+                $errMsg = if ($json.error) { $json.error } else { 'unknown error' }
+                if ($errMsg.Length -gt 80) { $errMsg = $errMsg.Substring(0, 77) + '...' }
+                Add-TestResult 'ValidateConfig' 'valid=true' 'WARN' "Config invalid: $errMsg"
+            }
+        } else {
+            Add-TestResult 'ValidateConfig' 'valid field' 'FAIL' 'Missing valid field in JSON'
+        }
+
+        # Check config_file field
+        if ($json.config_file) {
+            Add-TestResult 'ValidateConfig' 'config_file' 'PASS' $json.config_file
+        } else {
+            Add-TestResult 'ValidateConfig' 'config_file' 'WARN' 'No config file (using defaults)'
+        }
+
+        # Check warnings (from Lua validators)
+        if ($null -ne $json.warnings) {
+            $warnCount = @($json.warnings).Count
+            if ($warnCount -gt 0) {
+                $firstWarn = $json.warnings[0]
+                if ($firstWarn.Length -gt 60) { $firstWarn = $firstWarn.Substring(0, 57) + '...' }
+                Add-TestResult 'ValidateConfig' 'warnings' 'WARN' "$warnCount warning(s): $firstWarn"
+            } else {
+                Add-TestResult 'ValidateConfig' 'warnings' 'PASS' 'No warnings'
+            }
+        } else {
+            Add-TestResult 'ValidateConfig' 'warnings field' 'FAIL' 'Missing warnings field'
+        }
+
+        # Check watch_paths
+        if ($null -ne $json.watch_paths) {
+            $pathCount = @($json.watch_paths).Count
+            if ($pathCount -gt 0) {
+                Add-TestResult 'ValidateConfig' 'watch_paths' 'PASS' "$pathCount path(s) monitored"
+            } else {
+                Add-TestResult 'ValidateConfig' 'watch_paths' 'PASS' 'Empty watch paths (default config)'
+            }
+        } else {
+            Add-TestResult 'ValidateConfig' 'watch_paths field' 'FAIL' 'Missing watch_paths field'
+        }
+    } catch {
+        Add-TestResult 'ValidateConfig' 'validate-config' 'FAIL' $_.Exception.Message
+    } finally {
+        Remove-Item $vcOutFile, $vcErrFile -ErrorAction SilentlyContinue
+    }
+}
+
 function Test-LuaModuleIntegration {
     Write-Host "`n=== Lua Module Integration ===" -ForegroundColor Cyan
 
@@ -711,6 +928,8 @@ Write-Host "=================================================================" -
 Test-BinaryPresence
 Test-CompanionFiles
 Test-CLIFlags
+Test-Subcommands
+Test-ValidateConfig
 Test-ConfigLoading
 Test-Symlinks
 Test-LuaModuleIntegration
