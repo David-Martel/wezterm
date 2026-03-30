@@ -300,6 +300,9 @@ pub async fn try_connect() -> Option<DaemonClient> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{JsonRpcMessage, JsonRpcRequest, RequestId, JSONRPC_VERSION};
+
+    // === next_id() tests ===
 
     #[test]
     fn test_next_id_increments() {
@@ -312,7 +315,205 @@ mod tests {
     }
 
     #[test]
+    fn test_next_id_returns_number_variant() {
+        let id = next_id();
+        assert!(
+            matches!(id, RequestId::Number(_)),
+            "next_id should always return RequestId::Number"
+        );
+    }
+
+    #[test]
+    fn test_next_id_is_positive() {
+        let id = next_id();
+        match id {
+            RequestId::Number(n) => assert!(n > 0, "ID should be positive"),
+            _ => panic!("Expected numeric ID"),
+        }
+    }
+
+    #[test]
+    fn test_next_id_monotonic_across_multiple_calls() {
+        let mut prev = match next_id() {
+            RequestId::Number(n) => n,
+            _ => panic!("Expected numeric ID"),
+        };
+        for _ in 0..10 {
+            let current = match next_id() {
+                RequestId::Number(n) => n,
+                _ => panic!("Expected numeric ID"),
+            };
+            assert!(
+                current > prev,
+                "IDs should be strictly increasing: {} should be > {}",
+                current,
+                prev
+            );
+            prev = current;
+        }
+    }
+
+    // === Default pipe/socket path tests ===
+
+    #[cfg(windows)]
+    #[test]
     fn test_default_pipe_name() {
         assert!(DEFAULT_PIPE_NAME.contains("wezterm-utils-daemon"));
+        assert!(
+            DEFAULT_PIPE_NAME.starts_with(r"\\.\pipe\"),
+            "Windows pipe should start with named pipe prefix"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_default_socket_path() {
+        assert!(DEFAULT_SOCKET_PATH.contains("wezterm-utils-daemon"));
+        assert!(
+            DEFAULT_SOCKET_PATH.ends_with(".sock"),
+            "Unix socket should end with .sock"
+        );
+    }
+
+    // === Request JSON structure tests ===
+
+    #[test]
+    fn test_ping_request_json_structure() {
+        let id = RequestId::Number(1);
+        let req = JsonRpcRequest::new("daemon/ping", Some(json!({})), Some(id));
+        let val = serde_json::to_value(&req).expect("serialize ping request");
+
+        assert_eq!(val["jsonrpc"], JSONRPC_VERSION);
+        assert_eq!(val["method"], "daemon/ping");
+        assert_eq!(val["id"], 1);
+        assert!(val.get("params").is_some());
+    }
+
+    #[test]
+    fn test_register_request_json_structure() {
+        let id = RequestId::Number(5);
+        let params = json!({
+            "name": "test-utility",
+            "capabilities": ["state-sync", "file-watch"],
+        });
+        let req = JsonRpcRequest::new("daemon/register", Some(params), Some(id));
+        let val = serde_json::to_value(&req).expect("serialize register request");
+
+        assert_eq!(val["jsonrpc"], JSONRPC_VERSION);
+        assert_eq!(val["method"], "daemon/register");
+        assert_eq!(val["params"]["name"], "test-utility");
+        assert_eq!(
+            val["params"]["capabilities"]
+                .as_array()
+                .expect("capabilities should be array")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn test_subscribe_request_json_structure() {
+        let subscriptions: Vec<Value> = vec!["panel-state", "file.changed"]
+            .iter()
+            .map(|et| json!({"event_type": et}))
+            .collect();
+        let params = json!({"subscriptions": subscriptions});
+        let req = JsonRpcRequest::new("daemon/subscribe", Some(params), Some(RequestId::Number(3)));
+        let val = serde_json::to_value(&req).expect("serialize subscribe request");
+
+        assert_eq!(val["method"], "daemon/subscribe");
+        let subs = val["params"]["subscriptions"]
+            .as_array()
+            .expect("subscriptions should be array");
+        assert_eq!(subs.len(), 2);
+        assert_eq!(subs[0]["event_type"], "panel-state");
+        assert_eq!(subs[1]["event_type"], "file.changed");
+    }
+
+    #[test]
+    fn test_broadcast_request_json_structure() {
+        let params = json!({
+            "event_type": "panel-state",
+            "data": {"explorer": true, "window_id": 1},
+        });
+        let req = JsonRpcRequest::new("daemon/broadcast", Some(params), Some(RequestId::Number(7)));
+        let val = serde_json::to_value(&req).expect("serialize broadcast request");
+
+        assert_eq!(val["method"], "daemon/broadcast");
+        assert_eq!(val["params"]["event_type"], "panel-state");
+        assert_eq!(val["params"]["data"]["explorer"], true);
+    }
+
+    #[test]
+    fn test_send_to_request_json_structure() {
+        let params = json!({
+            "target": "watcher",
+            "message": {"action": "restart"},
+        });
+        let req = JsonRpcRequest::new("daemon/send", Some(params), Some(RequestId::Number(8)));
+        let val = serde_json::to_value(&req).expect("serialize send request");
+
+        assert_eq!(val["method"], "daemon/send");
+        assert_eq!(val["params"]["target"], "watcher");
+        assert_eq!(val["params"]["message"]["action"], "restart");
+    }
+
+    #[test]
+    fn test_status_request_json_structure() {
+        let req = JsonRpcRequest::new("daemon/status", Some(json!({})), Some(RequestId::Number(9)));
+        let val = serde_json::to_value(&req).expect("serialize status request");
+
+        assert_eq!(val["method"], "daemon/status");
+        assert_eq!(val["id"], 9);
+    }
+
+    // === Notification (no id) tests ===
+
+    #[test]
+    fn test_notify_creates_request_without_id() {
+        let req = JsonRpcRequest::new("event/panel-state", Some(json!({"visible": true})), None);
+        let msg = JsonRpcMessage::Request(req);
+        let json = msg.to_string().expect("serialize notification");
+        let val: Value = serde_json::from_str(&json).expect("parse json");
+
+        assert!(
+            val.get("id").is_none(),
+            "notification should not have an id field"
+        );
+        assert_eq!(val["method"], "event/panel-state");
+        assert_eq!(val["params"]["visible"], true);
+    }
+
+    #[test]
+    fn test_notification_is_identified_correctly() {
+        let notification = JsonRpcRequest::new("event/test", Some(json!({})), None);
+        assert!(
+            notification.is_notification(),
+            "request without id should be a notification"
+        );
+
+        let request =
+            JsonRpcRequest::new("daemon/ping", Some(json!({})), Some(RequestId::Number(1)));
+        assert!(
+            !request.is_notification(),
+            "request with id should NOT be a notification"
+        );
+    }
+
+    // === Message envelope tests (request vs notification) ===
+
+    #[test]
+    fn test_request_message_roundtrip() {
+        let req = JsonRpcRequest::new("daemon/ping", Some(json!({})), Some(RequestId::Number(100)));
+        let msg = JsonRpcMessage::Request(req);
+        let json = msg.to_string().expect("serialize");
+        let parsed = JsonRpcMessage::parse(&json).expect("parse back");
+        match parsed {
+            JsonRpcMessage::Request(r) => {
+                assert_eq!(r.method, "daemon/ping");
+                assert_eq!(r.id, Some(RequestId::Number(100)));
+            }
+            _ => panic!("expected Request after roundtrip"),
+        }
     }
 }
