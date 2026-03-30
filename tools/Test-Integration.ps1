@@ -103,12 +103,13 @@ function Send-PipeMessage {
         $writer.WriteLine($JsonMessage)
         $response = $reader.ReadLine()
 
-        $reader.Dispose()
-        $writer.Dispose()
-        $pipe.Dispose()
+        # Dispose only the pipe — it closes the underlying stream for both reader and writer
+        try { $pipe.Dispose() } catch {}
 
         return $response
     } catch {
+        Write-Host "[DEBUG] Send-PipeMessage to '$PipeName' failed: $_" -ForegroundColor DarkGray
+        try { if ($pipe) { $pipe.Dispose() } } catch {}
         return $null
     }
 }
@@ -132,8 +133,8 @@ function Start-TestDaemon {
     $outFile = Join-Path $tempDir "daemon-integ-out-$(Get-Random).txt"
     $errFile = Join-Path $tempDir "daemon-integ-err-$(Get-Random).txt"
 
-    # Start daemon — pass pipe name if the daemon supports it, else use default
-    $argList = "--pipe-name $PipeName"
+    # Start daemon — use 'start --pipe' subcommand syntax
+    $argList = "--log-level warn start --pipe \\.\pipe\$PipeName"
     try {
         $proc = Start-Process -FilePath $DaemonExe -ArgumentList $argList `
             -PassThru -NoNewWindow `
@@ -249,29 +250,17 @@ function Test-DaemonIPC {
         return
     }
 
-    # Discover the actual pipe name
-    $actualPipe = $null
-    $pipeSearch = @([System.IO.Directory]::GetFiles('\\.\pipe\') | Where-Object {
-        $_ -match 'wezterm-utils'
-    })
-    if ($pipeSearch.Count -gt 0) {
-        # Extract pipe name from \\.\pipe\<name>
-        $actualPipe = ($pipeSearch[0] -replace '^\\\\\.\pipe\\', '')
-    }
+    # Use the test pipe name directly (we started the daemon with this pipe)
+    $actualPipe = $TestPipeName
 
-    if (-not $actualPipe) {
-        # Try common pipe name as fallback
-        $actualPipe = 'wezterm-utils-daemon'
-    }
-
-    # Test 1: Ping
-    $pingMsg = '{"type":"ping"}'
+    # Test 1: Ping (JSON-RPC 2.0 protocol)
+    $pingMsg = '{"jsonrpc":"2.0","method":"daemon/ping","id":1}'
     $pingResp = Send-PipeMessage -PipeName $actualPipe -JsonMessage $pingMsg -TimeoutMs 5000
     if ($pingResp) {
         try {
             $pingJson = $pingResp | ConvertFrom-Json
-            if ($pingJson.type -eq 'pong' -or $pingResp -match 'pong') {
-                Add-TestResult 'DaemonIPC' 'ping -> pong' 'PASS' $pingResp
+            if ($pingJson.result.status -eq 'pong') {
+                Add-TestResult 'DaemonIPC' 'ping -> pong' 'PASS' 'pong received'
             } else {
                 $preview = if ($pingResp.Length -gt 80) { $pingResp.Substring(0, 77) + '...' } else { $pingResp }
                 Add-TestResult 'DaemonIPC' 'ping -> pong' 'WARN' "Got response but not pong: $preview"
@@ -284,48 +273,77 @@ function Test-DaemonIPC {
         Add-TestResult 'DaemonIPC' 'ping -> pong' 'FAIL' 'No response from pipe'
     }
 
-    # Test 2: Status
-    $statusMsg = '{"type":"status"}'
+    # Test 2: Status (JSON-RPC 2.0)
+    $statusMsg = '{"jsonrpc":"2.0","method":"daemon/status","id":2}'
     $statusResp = Send-PipeMessage -PipeName $actualPipe -JsonMessage $statusMsg -TimeoutMs 5000
     if ($statusResp) {
         try {
             $statusJson = $statusResp | ConvertFrom-Json
-            $preview = if ($statusResp.Length -gt 80) { $statusResp.Substring(0, 77) + '...' } else { $statusResp }
-            Add-TestResult 'DaemonIPC' 'status' 'PASS' $preview
+            if ($statusJson.result.version) {
+                Add-TestResult 'DaemonIPC' 'status' 'PASS' "version=$($statusJson.result.version), uptime=$($statusJson.result.uptime_seconds)s"
+            } else {
+                Add-TestResult 'DaemonIPC' 'status' 'WARN' "Unexpected: $statusResp"
+            }
         } catch {
-            $preview = if ($statusResp.Length -gt 80) { $statusResp.Substring(0, 77) + '...' } else { $statusResp }
-            Add-TestResult 'DaemonIPC' 'status' 'WARN' "Non-JSON response: $preview"
+            Add-TestResult 'DaemonIPC' 'status' 'WARN' "Parse error: $statusResp"
         }
     } else {
         Add-TestResult 'DaemonIPC' 'status' 'FAIL' 'No response from pipe'
     }
 
-    # Test 3: Register + Subscribe + Broadcast sequence
-    $registerMsg = '{"type":"register","client_id":"integration-test"}'
+    # Test 3: Register (JSON-RPC 2.0 with flattened params)
+    $registerMsg = '{"jsonrpc":"2.0","method":"daemon/register","params":{"name":"integration-test","capabilities":["testing"]},"id":3}'
     $registerResp = Send-PipeMessage -PipeName $actualPipe -JsonMessage $registerMsg -TimeoutMs 5000
     if ($registerResp) {
-        $preview = if ($registerResp.Length -gt 80) { $registerResp.Substring(0, 77) + '...' } else { $registerResp }
-        Add-TestResult 'DaemonIPC' 'register' 'PASS' $preview
+        try {
+            $json = $registerResp | ConvertFrom-Json
+            if ($json.result.status -eq 'registered') {
+                Add-TestResult 'DaemonIPC' 'register' 'PASS' "name=$($json.result.name)"
+            } else {
+                Add-TestResult 'DaemonIPC' 'register' 'WARN' $registerResp
+            }
+        } catch {
+            Add-TestResult 'DaemonIPC' 'register' 'WARN' "Parse error: $registerResp"
+        }
     } else {
-        Add-TestResult 'DaemonIPC' 'register' 'WARN' 'No response (protocol may differ)'
+        Add-TestResult 'DaemonIPC' 'register' 'WARN' 'No response'
     }
 
-    $subscribeMsg = '{"type":"subscribe","topic":"test-topic","client_id":"integration-test"}'
+    # Test 4: Subscribe (JSON-RPC 2.0)
+    $subscribeMsg = '{"jsonrpc":"2.0","method":"daemon/subscribe","params":{"subscriptions":[{"event_type":"test-event"}]},"id":4}'
     $subscribeResp = Send-PipeMessage -PipeName $actualPipe -JsonMessage $subscribeMsg -TimeoutMs 5000
     if ($subscribeResp) {
-        $preview = if ($subscribeResp.Length -gt 80) { $subscribeResp.Substring(0, 77) + '...' } else { $subscribeResp }
-        Add-TestResult 'DaemonIPC' 'subscribe' 'PASS' $preview
+        try {
+            $json = $subscribeResp | ConvertFrom-Json
+            if ($json.result.status -eq 'subscribed') {
+                Add-TestResult 'DaemonIPC' 'subscribe' 'PASS' "count=$($json.result.count)"
+            } else {
+                Add-TestResult 'DaemonIPC' 'subscribe' 'WARN' $subscribeResp
+            }
+        } catch {
+            Add-TestResult 'DaemonIPC' 'subscribe' 'WARN' "Parse error: $subscribeResp"
+        }
     } else {
-        Add-TestResult 'DaemonIPC' 'subscribe' 'WARN' 'No response (protocol may differ)'
+        Add-TestResult 'DaemonIPC' 'subscribe' 'WARN' 'No response'
     }
 
-    $broadcastMsg = '{"type":"broadcast","topic":"test-topic","payload":"hello-integration"}'
+    # Test 5: Broadcast (JSON-RPC 2.0)
+    $broadcastMsg = '{"jsonrpc":"2.0","method":"daemon/broadcast","params":{"event_type":"test-event","data":{"key":"value"}},"id":5}'
     $broadcastResp = Send-PipeMessage -PipeName $actualPipe -JsonMessage $broadcastMsg -TimeoutMs 5000
     if ($broadcastResp) {
-        $preview = if ($broadcastResp.Length -gt 80) { $broadcastResp.Substring(0, 77) + '...' } else { $broadcastResp }
-        Add-TestResult 'DaemonIPC' 'broadcast' 'PASS' $preview
+        try {
+            $json = $broadcastResp | ConvertFrom-Json
+            # May receive the notification first, then the response
+            if ($json.result.status -eq 'broadcast' -or $json.method -eq 'event/test-event') {
+                Add-TestResult 'DaemonIPC' 'broadcast' 'PASS' $broadcastResp.Substring(0, [Math]::Min(80, $broadcastResp.Length))
+            } else {
+                Add-TestResult 'DaemonIPC' 'broadcast' 'WARN' $broadcastResp.Substring(0, [Math]::Min(80, $broadcastResp.Length))
+            }
+        } catch {
+            Add-TestResult 'DaemonIPC' 'broadcast' 'WARN' "Parse error"
+        }
     } else {
-        Add-TestResult 'DaemonIPC' 'broadcast' 'WARN' 'No response (protocol may differ)'
+        Add-TestResult 'DaemonIPC' 'broadcast' 'WARN' 'No response'
     }
 }
 
