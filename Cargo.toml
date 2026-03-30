@@ -22,6 +22,7 @@ members = [
   "wezterm-utils-daemon",
   "wezterm-benchmarks",
   "wezterm-watch",
+  "wezterm-fs-explorer",
 ]
 resolver = "2"
 exclude = [
@@ -38,6 +39,11 @@ opt-level = 3
 # Disabled because it breaks builds on Windows
 #split-debuginfo = "unpacked"
 incremental = false  # Use sccache instead of incremental state for cleaner caching
+
+[profile.test]
+inherits = "dev"
+opt-level = 1       # Faster test compilation than full optimization
+lto = false         # Skip LTO for tests
 
 [workspace.dependencies]
 ahash = "0.8"
