@@ -8,7 +8,6 @@ pub mod watcher;
 
 use anyhow::{Context, Result};
 use std::path::Path;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -58,8 +57,9 @@ pub fn run(watch_path: &Path, config: WatchConfig) -> Result<()> {
         .canonicalize()
         .context("Failed to resolve watch path")?;
 
-    let format = output::OutputFormat::from_str(&config.format)
-        .map_err(|e| anyhow::anyhow!("{}", e))
+    let format: output::OutputFormat = config
+        .format
+        .parse()
         .context("Invalid output format. Use: json, pretty, events, or summary")?;
 
     // Initialize Git monitor

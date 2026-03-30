@@ -17,7 +17,7 @@ wezterm-fs-utils = { workspace = true }
 
 # Lua integration
 luahelper = { workspace = true }
-mlua = { workspace = true }
+mlua = { workspace = true, features = ["serialize"] }
 
 # Async and concurrency
 async-trait = { workspace = true }

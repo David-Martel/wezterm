@@ -159,25 +159,16 @@ pub async fn run_explorer(start_dir: &Path, config: ExploreConfig) -> anyhow::Re
         None
     };
 
-    let result = if config.json {
-        Ok(vec![start_dir.to_path_buf()])
-    } else {
-        run_interactive(start_dir, ipc_client_inst.as_mut()).await
-    };
-
-    match result {
-        Ok(selected_paths) => {
-            if config.json {
-                println!("{}", serde_json::to_string(&selected_paths)?);
-            } else {
-                for path in selected_paths {
-                    println!("{}", path.display());
-                }
-            }
-            Ok(())
-        }
-        Err(e) => Err(e),
+    if config.json {
+        println!("{}", serde_json::to_string(&[start_dir])?);
+        return Ok(());
     }
+
+    let selected_paths = run_interactive(start_dir, ipc_client_inst.as_mut()).await?;
+    for path in selected_paths {
+        println!("{}", path.display());
+    }
+    Ok(())
 }
 
 async fn run_interactive(

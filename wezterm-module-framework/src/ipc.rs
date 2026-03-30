@@ -76,6 +76,7 @@ pub async fn try_connect() -> Option<()> {
 #[cfg(feature = "daemon-ipc")]
 pub fn register_lua_api(lua: &mlua::Lua) -> anyhow::Result<()> {
     use config::lua::get_or_create_sub_module;
+    use mlua::LuaSerdeExt;
 
     let daemon_mod = get_or_create_sub_module(lua, "daemon")?;
 
@@ -83,13 +84,8 @@ pub fn register_lua_api(lua: &mlua::Lua) -> anyhow::Result<()> {
     daemon_mod.set(
         "ping",
         lua.create_function(|_, ()| {
-            match blocking_ping() {
-                Ok(_) => Ok(true),
-                Err(e) => {
-                    log::debug!("daemon.ping failed: {e}");
-                    Ok(false)
-                }
-            }
+            let ok = blocking_call(|c| async move { c.ping().await }).is_ok();
+            Ok(ok)
         })?,
     )?;
 
@@ -97,13 +93,7 @@ pub fn register_lua_api(lua: &mlua::Lua) -> anyhow::Result<()> {
     daemon_mod.set(
         "status",
         lua.create_function(|lua_ctx, ()| {
-            match blocking_status() {
-                Ok(value) => json_value_to_lua(lua_ctx, value),
-                Err(e) => {
-                    log::debug!("daemon.status failed: {e}");
-                    Ok(mlua::Value::Nil)
-                }
-            }
+            blocking_call_to_lua(lua_ctx, "status", |c| async move { c.status().await })
         })?,
     )?;
 
@@ -111,14 +101,10 @@ pub fn register_lua_api(lua: &mlua::Lua) -> anyhow::Result<()> {
     daemon_mod.set(
         "broadcast",
         lua.create_function(|lua_ctx, (event_type, data): (String, mlua::Value)| {
-            let json_data = lua_to_json_value(data, &mut std::collections::HashSet::new())?;
-            match blocking_broadcast(event_type, json_data) {
-                Ok(value) => json_value_to_lua(lua_ctx, value),
-                Err(e) => {
-                    log::debug!("daemon.broadcast failed: {e}");
-                    Ok(mlua::Value::Nil)
-                }
-            }
+            let json_data: serde_json::Value = lua_ctx.from_value(data)?;
+            blocking_call_to_lua(lua_ctx, "broadcast", |c| async move {
+                c.broadcast(&event_type, &json_data).await
+            })
         })?,
     )?;
 
@@ -126,18 +112,40 @@ pub fn register_lua_api(lua: &mlua::Lua) -> anyhow::Result<()> {
     daemon_mod.set(
         "register",
         lua.create_function(|lua_ctx, (name, caps): (String, Vec<String>)| {
-            match blocking_register(name, caps) {
-                Ok(value) => json_value_to_lua(lua_ctx, value),
-                Err(e) => {
-                    log::debug!("daemon.register failed: {e}");
-                    Ok(mlua::Value::Nil)
-                }
-            }
+            blocking_call_to_lua(lua_ctx, "register", |c| async move {
+                c.register(&name, caps).await
+            })
         })?,
     )?;
 
     log::debug!("Registered wezterm.daemon Lua API");
     Ok(())
+}
+
+/// Execute a daemon call and convert the result to a Lua value.
+///
+/// On success, converts the `serde_json::Value` to an `mlua::Value` via
+/// `LuaSerdeExt`. On failure, logs a debug message and returns `nil`.
+#[cfg(feature = "daemon-ipc")]
+fn blocking_call_to_lua<'lua, F, Fut, E>(
+    lua: &'lua mlua::Lua,
+    label: &str,
+    op: F,
+) -> mlua::Result<mlua::Value<'lua>>
+where
+    F: FnOnce(DaemonClient) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, E>>,
+    E: Into<anyhow::Error>,
+{
+    use mlua::LuaSerdeExt;
+
+    match blocking_call(op) {
+        Ok(value) => lua.to_value(&value),
+        Err(e) => {
+            log::debug!("daemon.{label} failed: {e}");
+            Ok(mlua::Value::Nil)
+        }
+    }
 }
 
 /// Stub when daemon-ipc is disabled -- registers an empty `wezterm.daemon`
@@ -160,186 +168,34 @@ pub fn register_lua_api(lua: &mlua::Lua) -> anyhow::Result<()> {
 // Blocking bridge: sync Lua context -> async daemon client
 // ---------------------------------------------------------------------------
 //
-// Each function below spins up a lightweight current-thread tokio runtime,
-// connects to the daemon, runs one request, and tears down the runtime.
+// Each call spins up a lightweight current-thread tokio runtime, connects
+// to the daemon, runs one request, and tears down the runtime.
 // This is appropriate for infrequent calls (panel toggles, status checks)
 // where the ~1 ms overhead of runtime construction is negligible.
 
-/// Create a throwaway tokio runtime and connect to the daemon.
+/// Connect to the daemon and execute `op` inside a throwaway tokio runtime.
+///
+/// The closure receives a connected [`DaemonClient`] and returns a
+/// `serde_json::Value` result. Connection and runtime errors are
+/// propagated as `anyhow::Error`.
 #[cfg(feature = "daemon-ipc")]
-fn new_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
-    tokio::runtime::Builder::new_current_thread()
+fn blocking_call<F, Fut, E>(op: F) -> anyhow::Result<serde_json::Value>
+where
+    F: FnOnce(DaemonClient) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, E>>,
+    E: Into<anyhow::Error>,
+{
+    let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|e| anyhow::anyhow!("failed to create tokio runtime: {e}"))
-}
+        .map_err(|e| anyhow::anyhow!("failed to create tokio runtime: {e}"))?;
 
-#[cfg(feature = "daemon-ipc")]
-fn blocking_ping() -> anyhow::Result<serde_json::Value> {
-    let rt = new_runtime()?;
     rt.block_on(async {
         let client = DaemonClient::connect()
             .await
             .map_err(|e| anyhow::anyhow!("daemon connection failed: {e}"))?;
-        client
-            .ping()
-            .await
-            .map_err(|e| anyhow::anyhow!("daemon ping failed: {e}"))
+        op(client).await.map_err(Into::into)
     })
-}
-
-#[cfg(feature = "daemon-ipc")]
-fn blocking_status() -> anyhow::Result<serde_json::Value> {
-    let rt = new_runtime()?;
-    rt.block_on(async {
-        let client = DaemonClient::connect()
-            .await
-            .map_err(|e| anyhow::anyhow!("daemon connection failed: {e}"))?;
-        client
-            .status()
-            .await
-            .map_err(|e| anyhow::anyhow!("daemon status failed: {e}"))
-    })
-}
-
-#[cfg(feature = "daemon-ipc")]
-fn blocking_broadcast(
-    event_type: String,
-    data: serde_json::Value,
-) -> anyhow::Result<serde_json::Value> {
-    let rt = new_runtime()?;
-    rt.block_on(async {
-        let client = DaemonClient::connect()
-            .await
-            .map_err(|e| anyhow::anyhow!("daemon connection failed: {e}"))?;
-        client
-            .broadcast(&event_type, &data)
-            .await
-            .map_err(|e| anyhow::anyhow!("daemon broadcast failed: {e}"))
-    })
-}
-
-#[cfg(feature = "daemon-ipc")]
-fn blocking_register(
-    name: String,
-    capabilities: Vec<String>,
-) -> anyhow::Result<serde_json::Value> {
-    let rt = new_runtime()?;
-    rt.block_on(async {
-        let client = DaemonClient::connect()
-            .await
-            .map_err(|e| anyhow::anyhow!("daemon connection failed: {e}"))?;
-        client
-            .register(&name, capabilities)
-            .await
-            .map_err(|e| anyhow::anyhow!("daemon register failed: {e}"))
-    })
-}
-
-// ---------------------------------------------------------------------------
-// serde_json::Value <-> mlua::Value conversion
-// ---------------------------------------------------------------------------
-
-/// Convert a `serde_json::Value` into an `mlua::Value`.
-///
-/// Objects become Lua tables, arrays become 1-indexed Lua tables, numbers
-/// are represented as integers when possible, and `null` maps to `nil`.
-#[cfg(feature = "daemon-ipc")]
-fn json_value_to_lua<'lua>(
-    lua: &'lua mlua::Lua,
-    value: serde_json::Value,
-) -> mlua::Result<mlua::Value<'lua>> {
-    use mlua::IntoLua;
-
-    Ok(match value {
-        serde_json::Value::Null => mlua::Value::Nil,
-        serde_json::Value::Bool(b) => mlua::Value::Boolean(b),
-        serde_json::Value::Number(n) => match n.as_i64() {
-            Some(i) => mlua::Value::Integer(i),
-            None => match n.as_f64() {
-                Some(f) => mlua::Value::Number(f),
-                None => {
-                    return Err(mlua::Error::external(format!(
-                        "cannot represent {n:?} as i64 or f64"
-                    )));
-                }
-            },
-        },
-        serde_json::Value::String(s) => s.into_lua(lua)?,
-        serde_json::Value::Array(arr) => {
-            let tbl = lua.create_table_with_capacity(arr.len(), 0)?;
-            for (idx, v) in arr.into_iter().enumerate() {
-                tbl.set(idx + 1, json_value_to_lua(lua, v)?)?;
-            }
-            mlua::Value::Table(tbl)
-        }
-        serde_json::Value::Object(map) => {
-            let tbl = lua.create_table_with_capacity(0, map.len())?;
-            for (key, v) in map {
-                let lua_key = key.into_lua(lua)?;
-                let lua_val = json_value_to_lua(lua, v)?;
-                tbl.set(lua_key, lua_val)?;
-            }
-            mlua::Value::Table(tbl)
-        }
-    })
-}
-
-/// Convert an `mlua::Value` into a `serde_json::Value`.
-///
-/// The `visited` set guards against circular table references.
-#[cfg(feature = "daemon-ipc")]
-fn lua_to_json_value(
-    value: mlua::Value,
-    visited: &mut std::collections::HashSet<usize>,
-) -> mlua::Result<serde_json::Value> {
-    match value {
-        mlua::Value::Nil => Ok(serde_json::Value::Null),
-        mlua::Value::Boolean(b) => Ok(serde_json::Value::Bool(b)),
-        mlua::Value::Integer(i) => Ok(serde_json::json!(i)),
-        mlua::Value::Number(f) => serde_json::Number::from_f64(f)
-            .map(serde_json::Value::Number)
-            .ok_or_else(|| mlua::Error::external(format!("cannot represent {f} in JSON"))),
-        mlua::Value::String(s) => Ok(serde_json::Value::String(s.to_str()?.to_owned())),
-        mlua::Value::Table(tbl) => {
-            let ptr = tbl.to_pointer() as usize;
-            if !visited.insert(ptr) {
-                // Circular reference -- return null to avoid infinite recursion
-                return Ok(serde_json::Value::Null);
-            }
-
-            // Detect whether this is an array (sequential integer keys starting at 1)
-            // or an object (string keys).
-            let len = tbl.raw_len();
-            if len > 0 {
-                // Treat as array
-                let mut arr = Vec::with_capacity(len);
-                for i in 1..=len {
-                    let v: mlua::Value = tbl.raw_get(i)?;
-                    arr.push(lua_to_json_value(v, visited)?);
-                }
-                visited.remove(&ptr);
-                Ok(serde_json::Value::Array(arr))
-            } else {
-                // Treat as object
-                let mut map = serde_json::Map::new();
-                for pair in tbl.pairs::<mlua::Value, mlua::Value>() {
-                    let (k, v) = pair?;
-                    let key = match k {
-                        mlua::Value::String(s) => s.to_str()?.to_owned(),
-                        mlua::Value::Integer(i) => i.to_string(),
-                        mlua::Value::Number(f) => f.to_string(),
-                        _ => continue, // skip non-stringifiable keys
-                    };
-                    map.insert(key, lua_to_json_value(v, visited)?);
-                }
-                visited.remove(&ptr);
-                Ok(serde_json::Value::Object(map))
-            }
-        }
-        // Other Lua types (function, userdata, etc.) -> null
-        _ => Ok(serde_json::Value::Null),
-    }
 }
 
 #[cfg(test)]
@@ -372,35 +228,36 @@ mod tests {
 
     #[cfg(feature = "daemon-ipc")]
     mod conversion_tests {
-        use super::super::*;
+        use mlua::LuaSerdeExt;
         use serde_json::json;
-        use std::collections::HashSet;
 
         #[test]
         fn test_json_null_to_lua() {
             let lua = mlua::Lua::new();
-            let result = json_value_to_lua(&lua, json!(null)).expect("conversion");
-            assert!(matches!(result, mlua::Value::Nil));
+            let result = lua.to_value(&json!(null)).expect("conversion");
+            // LuaSerdeExt represents JSON null as a special NULL light
+            // userdata (not Lua nil), so that null values survive in tables.
+            assert!(result.is_null(), "expected NULL sentinel, got {result:?}");
         }
 
         #[test]
         fn test_json_bool_to_lua() {
             let lua = mlua::Lua::new();
-            let result = json_value_to_lua(&lua, json!(true)).expect("conversion");
+            let result = lua.to_value(&json!(true)).expect("conversion");
             assert!(matches!(result, mlua::Value::Boolean(true)));
         }
 
         #[test]
         fn test_json_integer_to_lua() {
             let lua = mlua::Lua::new();
-            let result = json_value_to_lua(&lua, json!(42)).expect("conversion");
+            let result = lua.to_value(&json!(42)).expect("conversion");
             assert!(matches!(result, mlua::Value::Integer(42)));
         }
 
         #[test]
         fn test_json_float_to_lua() {
             let lua = mlua::Lua::new();
-            let result = json_value_to_lua(&lua, json!(3.14)).expect("conversion");
+            let result = lua.to_value(&json!(3.14)).expect("conversion");
             match result {
                 mlua::Value::Number(n) => assert!((n - 3.14).abs() < f64::EPSILON),
                 other => panic!("expected Number, got {other:?}"),
@@ -410,7 +267,7 @@ mod tests {
         #[test]
         fn test_json_string_to_lua() {
             let lua = mlua::Lua::new();
-            let result = json_value_to_lua(&lua, json!("hello")).expect("conversion");
+            let result = lua.to_value(&json!("hello")).expect("conversion");
             match result {
                 mlua::Value::String(s) => assert_eq!(s.to_str().expect("str"), "hello"),
                 other => panic!("expected String, got {other:?}"),
@@ -420,8 +277,7 @@ mod tests {
         #[test]
         fn test_json_object_to_lua() {
             let lua = mlua::Lua::new();
-            let result =
-                json_value_to_lua(&lua, json!({"key": "value", "num": 7})).expect("conversion");
+            let result = lua.to_value(&json!({"key": "value", "num": 7})).expect("conversion");
             match result {
                 mlua::Value::Table(tbl) => {
                     let val: String = tbl.get("key").expect("get key");
@@ -436,7 +292,7 @@ mod tests {
         #[test]
         fn test_json_array_to_lua() {
             let lua = mlua::Lua::new();
-            let result = json_value_to_lua(&lua, json!([1, 2, 3])).expect("conversion");
+            let result = lua.to_value(&json!([1, 2, 3])).expect("conversion");
             match result {
                 mlua::Value::Table(tbl) => {
                     let v1: i64 = tbl.get(1).expect("get 1");
@@ -455,9 +311,8 @@ mod tests {
             tbl.set("explorer", true).expect("set");
             tbl.set("watcher", false).expect("set");
 
-            let result =
-                lua_to_json_value(mlua::Value::Table(tbl), &mut HashSet::new())
-                    .expect("conversion");
+            let result: serde_json::Value =
+                lua.from_value(mlua::Value::Table(tbl)).expect("conversion");
             match result {
                 serde_json::Value::Object(map) => {
                     assert_eq!(map.get("explorer"), Some(&json!(true)));
@@ -471,8 +326,8 @@ mod tests {
         fn test_roundtrip_json_lua_json() {
             let lua = mlua::Lua::new();
             let original = json!({"panels": {"explorer": true}, "count": 3});
-            let lua_val = json_value_to_lua(&lua, original.clone()).expect("to lua");
-            let back = lua_to_json_value(lua_val, &mut HashSet::new()).expect("to json");
+            let lua_val = lua.to_value(&original).expect("to lua");
+            let back: serde_json::Value = lua.from_value(lua_val).expect("to json");
             assert_eq!(original, back);
         }
     }
