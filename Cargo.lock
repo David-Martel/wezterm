@@ -10657,11 +10657,17 @@ dependencies = [
  "termwiz",
  "termwiz-funcs",
  "textwrap",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
  "umask",
  "url",
  "wezterm-client",
+ "wezterm-fs-explorer",
  "wezterm-gui-subcommands",
  "wezterm-term",
+ "wezterm-utils-daemon",
+ "wezterm-watch",
  "winapi",
 ]
 
@@ -11076,6 +11082,7 @@ dependencies = [
  "promise",
  "rangeset",
  "serde",
+ "serde_json",
  "tempfile",
  "termwiz",
  "thiserror 1.0.69",
@@ -11083,6 +11090,7 @@ dependencies = [
  "url",
  "wezterm-fs-utils",
  "wezterm-term",
+ "wezterm-utils-daemon",
 ]
 
 [[package]]

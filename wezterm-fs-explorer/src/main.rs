@@ -1,14 +1,4 @@
-mod app;
-mod error;
-mod file_entry;
-mod git_status;
-mod icons;
-mod keybindings;
-mod operations;
-mod ui;
-
 use anyhow::{Context, Result};
-use app::App;
 use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
@@ -24,8 +14,10 @@ use std::{
     time::Duration,
 };
 
-// Import library modules
+// Import all modules from the library crate
+use wezterm_fs_explorer::app::{self, App};
 use wezterm_fs_explorer::ipc_client::{self, IpcClient};
+use wezterm_fs_explorer::ui;
 
 #[derive(Parser, Debug)]
 #[command(name = "wezterm-fs-explorer")]

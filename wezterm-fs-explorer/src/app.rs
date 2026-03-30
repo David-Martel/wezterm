@@ -3,7 +3,7 @@ use crate::git_status::GitStatus;
 use crate::operations::FileOperation;
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use wezterm_fs_explorer::search::FuzzySearch;
+use crate::search::FuzzySearch;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppMode {

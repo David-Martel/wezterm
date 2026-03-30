@@ -18,6 +18,10 @@ use wezterm_gui_subcommands::*;
 
 mod asciicast;
 mod cli;
+mod daemon_cmd;
+mod explore_cmd;
+mod validate_config;
+mod watch_cmd;
 
 //    let message = "; ❤ 😍🤢\n\x1b[91;mw00t\n\x1b[37;104;m bleet\x1b[0;m.";
 
@@ -116,6 +120,12 @@ enum SubCommand {
     #[command(name = "show-keys", about = "Show key assignments")]
     ShowKeys(ShowKeysCommand),
 
+    #[command(
+        name = "validate-config",
+        about = "Load and validate the effective configuration"
+    )]
+    ValidateConfig(validate_config::ValidateConfigCommand),
+
     #[command(name = "cli", about = "Interact with experimental mux server")]
     Cli(cli::CliCommand),
 
@@ -134,6 +144,15 @@ enum SubCommand {
 
     #[command(name = "replay", about = "Replay an asciicast terminal session")]
     Replay(asciicast::PlayCommand),
+
+    #[command(name = "daemon", about = "Run the IPC utility daemon")]
+    Daemon(daemon_cmd::DaemonCommand),
+
+    #[command(name = "watch", about = "Watch files for changes with git integration")]
+    Watch(watch_cmd::WatchCommand),
+
+    #[command(name = "explore", about = "Interactive filesystem explorer")]
+    Explore(explore_cmd::ExploreCommand),
 
     /// Generate shell completion information
     #[command(name = "shell-completion")]
@@ -752,9 +771,13 @@ fn run() -> anyhow::Result<()> {
         | SubCommand::Connect(_) => delegate_to_gui(saver),
         SubCommand::ImageCat(cmd) => cmd.run(),
         SubCommand::SetCwd(cmd) => cmd.run(),
+        SubCommand::ValidateConfig(cmd) => cmd.run(&opts),
         SubCommand::Cli(cli) => cli::run_cli(&opts, cli),
         SubCommand::Record(cmd) => cmd.run(init_config(&opts)?),
         SubCommand::Replay(cmd) => cmd.run(),
+        SubCommand::Daemon(cmd) => cmd.run(),
+        SubCommand::Watch(cmd) => cmd.run(),
+        SubCommand::Explore(cmd) => cmd.run(),
         SubCommand::ShellCompletion { shell } => {
             use clap::CommandFactory;
             let mut cmd = Opt::command();

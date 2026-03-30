@@ -36,9 +36,15 @@ termwiz.workspace = true
 textwrap.workspace  =true
 umask.workspace = true
 url.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wezterm-client.workspace = true
+wezterm-fs-explorer = { path = "../wezterm-fs-explorer" }
 wezterm-gui-subcommands.workspace = true
 wezterm-term.workspace = true
+wezterm-utils-daemon = { path = "../wezterm-utils-daemon" }
+wezterm-watch = { path = "../wezterm-watch" }
 
 [target."cfg(unix)".dependencies]
 termios.workspace = true
