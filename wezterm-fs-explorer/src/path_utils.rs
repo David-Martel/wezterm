@@ -153,7 +153,11 @@ pub fn to_wsl_path(path: &Path) -> PathBuf {
         if let (Some(c0), Some(c1)) = (chars.next(), chars.next()) {
             if c0.is_ascii_alphabetic() && c1 == ':' {
                 let drive = c0.to_ascii_lowercase();
-                let rest = if path_str.len() > 2 { &path_str[2..] } else { "" };
+                let rest = if path_str.len() > 2 {
+                    &path_str[2..]
+                } else {
+                    ""
+                };
                 let rest_normalized = rest.replace('\\', "/");
 
                 // Ensure path starts with / if there's content after the drive
@@ -215,11 +219,7 @@ pub fn to_windows_path(path: &Path) -> PathBuf {
         if let Some(rest) = path_str.strip_prefix("/mnt/") {
             if let Some(drive_char) = rest.chars().next() {
                 if drive_char.is_ascii_lowercase() {
-                    let remainder = if rest.len() > 1 {
-                        &rest[1..]
-                    } else {
-                        ""
-                    };
+                    let remainder = if rest.len() > 1 { &rest[1..] } else { "" };
 
                     // Skip the leading slash if present
                     let remainder = remainder.strip_prefix('/').unwrap_or(remainder);
@@ -350,7 +350,10 @@ mod tests {
         );
         assert_eq!(detect_path_type(Path::new("file.txt")), PathType::Unix);
         assert_eq!(detect_path_type(Path::new("./file.txt")), PathType::Unix);
-        assert_eq!(detect_path_type(Path::new("../parent/file.txt")), PathType::Unix);
+        assert_eq!(
+            detect_path_type(Path::new("../parent/file.txt")),
+            PathType::Unix
+        );
     }
 
     #[test]
@@ -446,11 +449,17 @@ mod tests {
     fn test_to_windows_path_unix_to_unc() {
         let path = Path::new("/home/david/file.txt");
         let win = to_windows_path(path);
-        assert_eq!(win.to_str().unwrap(), r"\\wsl.localhost\Ubuntu\home\david\file.txt");
+        assert_eq!(
+            win.to_str().unwrap(),
+            r"\\wsl.localhost\Ubuntu\home\david\file.txt"
+        );
 
         let path = Path::new("/usr/bin/bash");
         let win = to_windows_path(path);
-        assert_eq!(win.to_str().unwrap(), r"\\wsl.localhost\Ubuntu\usr\bin\bash");
+        assert_eq!(
+            win.to_str().unwrap(),
+            r"\\wsl.localhost\Ubuntu\usr\bin\bash"
+        );
     }
 
     #[test]
@@ -564,6 +573,9 @@ mod tests {
         // Windows paths with mixed slashes
         let path = Path::new(r"C:\Users/david\Documents/file.txt");
         let wsl = to_wsl_path(path);
-        assert_eq!(wsl.to_str().unwrap(), "/mnt/c/Users/david/Documents/file.txt");
+        assert_eq!(
+            wsl.to_str().unwrap(),
+            "/mnt/c/Users/david/Documents/file.txt"
+        );
     }
 }

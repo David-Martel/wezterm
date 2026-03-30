@@ -41,10 +41,14 @@ pub mod ui;
 
 // Re-export commonly used types
 pub use ipc::{IpcClient, IpcServer, IpcStream};
-pub use ipc_client::{IpcMessage, JsonRpcError, JsonRpcRequest, JsonRpcResponse, open_file_in_editor};
+pub use ipc_client::{
+    open_file_in_editor, IpcMessage, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
+};
 pub use path_utils::{detect_path_type, normalize_path, to_windows_path, to_wsl_path, PathType};
 pub use search::{FuzzySearch, SearchResult};
-pub use shell::{detect_shell, execute_command, translate_command, translate_path_in_command, Shell, ShellError};
+pub use shell::{
+    detect_shell, execute_command, translate_command, translate_path_in_command, Shell, ShellError,
+};
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},

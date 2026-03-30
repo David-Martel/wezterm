@@ -32,10 +32,7 @@ pub enum IpcMessage {
     #[serde(rename = "watcher.watch_directory")]
     WatchDirectory { path: PathBuf },
     #[serde(rename = "explorer.refresh_file")]
-    RefreshFile {
-        path: PathBuf,
-        change_type: String,
-    },
+    RefreshFile { path: PathBuf, change_type: String },
     #[serde(rename = "explorer.navigate")]
     Navigate { directory: PathBuf },
     #[serde(rename = "broadcast.selection_update")]

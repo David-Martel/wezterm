@@ -206,9 +206,9 @@ async fn validate_config(config_path: Option<PathBuf>) -> Result<()> {
 async fn show_status() -> Result<()> {
     info!("Requesting daemon status...");
 
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use wezterm_utils_daemon::protocol::{JsonRpcRequest, RequestId};
     use wezterm_utils_daemon::server::connect_client;
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     // Connect to daemon
     let config = Config::default();

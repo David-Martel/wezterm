@@ -58,7 +58,9 @@ fn test_help_flag() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("High-performance filesystem explorer"))
+        .stdout(predicate::str::contains(
+            "High-performance filesystem explorer",
+        ))
         .stdout(predicate::str::contains("Usage:"))
         .stdout(predicate::str::contains("--json"))
         .stdout(predicate::str::contains("--ipc-socket"));
@@ -247,7 +249,10 @@ async fn test_ipc_message_sending() {
 
     // Parse received message
     let parsed: Result<JsonRpcRequest, _> = serde_json::from_str(received.trim());
-    assert!(parsed.is_ok(), "Server should receive valid JSON-RPC message");
+    assert!(
+        parsed.is_ok(),
+        "Server should receive valid JSON-RPC message"
+    );
 
     let parsed = parsed.unwrap();
     assert_eq!(parsed.method, "test.method");
@@ -316,7 +321,10 @@ async fn test_ipc_watch_directory_message() {
         .write_all(message_str.as_bytes())
         .await
         .expect("Failed to write");
-    client_stream.write_all(b"\n").await.expect("Failed to write newline");
+    client_stream
+        .write_all(b"\n")
+        .await
+        .expect("Failed to write newline");
 
     // Wait for server verification
     timeout(Duration::from_secs(2), server_task)
@@ -388,7 +396,10 @@ async fn test_ipc_open_file_message() {
         .write_all(message_str.as_bytes())
         .await
         .expect("Failed to write");
-    client_stream.write_all(b"\n").await.expect("Failed to write newline");
+    client_stream
+        .write_all(b"\n")
+        .await
+        .expect("Failed to write newline");
 
     timeout(Duration::from_secs(2), server_task)
         .await
@@ -409,11 +420,7 @@ fn test_binary_exists_and_executable() {
 
 #[test]
 fn test_help_exits_successfully() {
-    cmd()
-        .arg("--help")
-        .assert()
-        .success()
-        .code(0);
+    cmd().arg("--help").assert().success().code(0);
 }
 
 // Note: --version flag is not implemented in the current CLI
@@ -512,7 +519,10 @@ async fn test_ipc_connection_to_nonexistent_socket() {
     let socket = PathBuf::from("/tmp/nonexistent-socket-12345.sock");
 
     let result = IpcClient::connect(&socket).await;
-    assert!(result.is_err(), "Should fail to connect to nonexistent socket");
+    assert!(
+        result.is_err(),
+        "Should fail to connect to nonexistent socket"
+    );
 }
 
 #[tokio::test]
@@ -569,10 +579,7 @@ fn test_directory_with_subdirectories() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(
-        output.status.success(),
-        "Should handle nested directories"
-    );
+    assert!(output.status.success(), "Should handle nested directories");
 }
 
 // ==============================================================================
@@ -594,10 +601,7 @@ fn test_windows_path_handling() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(
-        output.status.success(),
-        "Should handle Windows paths"
-    );
+    assert!(output.status.success(), "Should handle Windows paths");
 }
 
 #[cfg(unix)]
@@ -610,10 +614,7 @@ fn test_unix_path_handling() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(
-        output.status.success(),
-        "Should handle Unix paths"
-    );
+    assert!(output.status.success(), "Should handle Unix paths");
 }
 
 // ==============================================================================
@@ -660,10 +661,7 @@ fn test_help_completes_quickly() {
 
     let start = Instant::now();
 
-    cmd()
-        .arg("--help")
-        .assert()
-        .success();
+    cmd().arg("--help").assert().success();
 
     let elapsed = start.elapsed();
     assert!(

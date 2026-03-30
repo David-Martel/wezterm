@@ -236,7 +236,10 @@ impl WatcherModuleHandle {
     /// ```
     pub fn set_emit_events(&self, enabled: bool) {
         self.emit_events.store(enabled, Ordering::Relaxed);
-        log::info!("Watcher event emission {}", if enabled { "enabled" } else { "disabled" });
+        log::info!(
+            "Watcher event emission {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
     }
 
     /// Returns true if Lua event emission is enabled.
@@ -250,7 +253,12 @@ impl WatcherModuleHandle {
     /// This is safe to call from any thread (including the aggregator
     /// background thread). The actual Lua callback invocation happens
     /// asynchronously on the main thread.
-    fn emit_lua_event(&self, subscription_id: WatchCallbackId, kind: String, path: Option<PathBuf>) {
+    fn emit_lua_event(
+        &self,
+        subscription_id: WatchCallbackId,
+        kind: String,
+        path: Option<PathBuf>,
+    ) {
         if !self.emit_events.load(Ordering::Relaxed) {
             return;
         }
@@ -274,11 +282,8 @@ impl WatcherModuleHandle {
                                 event_table.set("path", p.as_str())?;
                             }
                             let args = lua.pack_multi(event_table)?;
-                            config::lua::emit_event(
-                                &lua,
-                                ("file-watch-event".to_string(), args),
-                            )
-                            .await?;
+                            config::lua::emit_event(&lua, ("file-watch-event".to_string(), args))
+                                .await?;
                         }
                         Ok(())
                     }
@@ -457,11 +462,7 @@ impl Module for WatcherModule {
                                 //    This schedules a `file-watch-event` emission
                                 //    on the main thread so Lua handlers registered
                                 //    via `wezterm.on('file-watch-event', fn)` fire.
-                                handle.emit_lua_event(
-                                    id,
-                                    kind_str.to_string(),
-                                    event.path.clone(),
-                                );
+                                handle.emit_lua_event(id, kind_str.to_string(), event.path.clone());
 
                                 // 3. Notify the Mux so GUI-thread subscribers
                                 //    can process the event. Send Empty as a
@@ -656,10 +657,7 @@ impl Module for WatcherModule {
             "on_event",
             lua.create_function(move |lua_ctx, func: mlua::Function| {
                 // Register via the standard wezterm.on event system
-                config::lua::register_event(
-                    lua_ctx,
-                    ("file-watch-event".to_string(), func),
-                )?;
+                config::lua::register_event(lua_ctx, ("file-watch-event".to_string(), func))?;
 
                 // Auto-enable event emission
                 if !on_event_handle.emit_events_enabled() {
@@ -717,9 +715,7 @@ mod tests {
         assert_eq!(module.subscription_count(), 0);
 
         // Unwatching the same ID again should be a no-op (not an error)
-        module
-            .unwatch(id)
-            .expect("double unwatch should not error");
+        module.unwatch(id).expect("double unwatch should not error");
         assert_eq!(module.subscription_count(), 0);
 
         // Clean up

@@ -346,6 +346,43 @@ function Test-WezTermGuiLaunch {
     }
 }
 
+function Invoke-WezTermConfigValidation {
+    $cliPath = Join-Path $Script:Config.BundlePath 'wezterm.exe'
+    $configPath = $Script:Config.WeztermConfigFile
+
+    if (-not (Test-Path $cliPath)) {
+        return @{
+            Passed = $false
+            Error = "Missing bundled CLI binary: $cliPath"
+            Output = ''
+        }
+    }
+
+    if (-not (Test-Path $configPath)) {
+        return @{
+            Passed = $false
+            Error = "Missing config file: $configPath"
+            Output = ''
+        }
+    }
+
+    try {
+        $output = & $cliPath --config-file $configPath validate-config --format human 2>&1
+        $text = ($output | Out-String).Trim()
+        return @{
+            Passed = ($LASTEXITCODE -eq 0)
+            Error = if ($LASTEXITCODE -eq 0) { '' } elseif ([string]::IsNullOrWhiteSpace($text)) { "validator exited with code $LASTEXITCODE" } else { $text }
+            Output = $text
+        }
+    } catch {
+        return @{
+            Passed = $false
+            Error = $_.Exception.Message
+            Output = ''
+        }
+    }
+}
+
 function Test-WeztermConfiguration {
     Write-Section "WezTerm Configuration"
 
@@ -362,22 +399,22 @@ function Test-WeztermConfiguration {
         return $false
     }
 
-    # Test 2: Configuration loads without errors
+    # Test 2: Configuration validates without errors
     $configValid = $false
     $configError = ''
 
     try {
-        $launchResult = Test-WezTermGuiLaunch
-        if ($launchResult.Passed) {
+        $validationResult = Invoke-WezTermConfigValidation
+        if ($validationResult.Passed) {
             $configValid = $true
         } else {
-            $configError = $launchResult.Error
+            $configError = $validationResult.Error
         }
     } catch {
         $configError = $_.Exception.Message
     }
 
-    Write-TestResult -Test "Configuration syntax valid" -Passed $configValid `
+    Write-TestResult -Test "Configuration validator passed" -Passed $configValid `
         -Details $configError
 
     # Test 3: Utilities integration present

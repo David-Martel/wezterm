@@ -212,18 +212,20 @@ mod tests {
         super::register_lua_api(&lua).expect("register_lua_api should succeed");
 
         // Retrieve the wezterm module from package.loaded
-        let package: mlua::Table = lua
-            .globals()
-            .get("package")
-            .expect("package should exist");
+        let package: mlua::Table = lua.globals().get("package").expect("package should exist");
         let loaded: mlua::Table = package.get("loaded").expect("loaded should exist");
         let wezterm: mlua::Table = loaded.get("wezterm").expect("wezterm module should exist");
-        let daemon: mlua::Table = wezterm.get("daemon").expect("daemon sub-module should exist");
+        let daemon: mlua::Table = wezterm
+            .get("daemon")
+            .expect("daemon sub-module should exist");
 
         // ping should be callable and return false (no daemon running)
         let ping_fn: mlua::Function = daemon.get("ping").expect("ping function should exist");
         let result: bool = ping_fn.call(()).expect("ping should not error");
-        assert!(!result, "ping should return false when daemon is not running");
+        assert!(
+            !result,
+            "ping should return false when daemon is not running"
+        );
     }
 
     #[cfg(feature = "daemon-ipc")]
@@ -277,7 +279,9 @@ mod tests {
         #[test]
         fn test_json_object_to_lua() {
             let lua = mlua::Lua::new();
-            let result = lua.to_value(&json!({"key": "value", "num": 7})).expect("conversion");
+            let result = lua
+                .to_value(&json!({"key": "value", "num": 7}))
+                .expect("conversion");
             match result {
                 mlua::Value::Table(tbl) => {
                     let val: String = tbl.get("key").expect("get key");

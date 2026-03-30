@@ -131,7 +131,10 @@ pub fn run(watch_path: &Path, config: WatchConfig) -> Result<()> {
     }
 
     // Print initial git status for summary/pretty modes
-    if matches!(format, output::OutputFormat::Pretty | output::OutputFormat::Summary) {
+    if matches!(
+        format,
+        output::OutputFormat::Pretty | output::OutputFormat::Summary
+    ) {
         if let Some(monitor) = &git_monitor {
             if let Ok(info) = monitor.get_status() {
                 println!("{}", formatter.format_git_info(&info));
@@ -142,10 +145,7 @@ pub fn run(watch_path: &Path, config: WatchConfig) -> Result<()> {
 
     // Main event loop
     let receiver = file_watcher.receiver();
-    let mut pending_events: Vec<(
-        watcher::WatchEvent,
-        Option<git::FileStatus>,
-    )> = Vec::new();
+    let mut pending_events: Vec<(watcher::WatchEvent, Option<git::FileStatus>)> = Vec::new();
 
     while running.load(Ordering::SeqCst) {
         match receiver.recv_timeout(std::time::Duration::from_millis(100)) {

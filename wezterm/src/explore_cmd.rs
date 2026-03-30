@@ -30,8 +30,6 @@ impl ExploreCommand {
             ipc_socket: self.ipc_socket.clone(),
         };
 
-        rt.block_on(async move {
-            wezterm_fs_explorer::run_explorer(&start_dir, config).await
-        })
+        rt.block_on(async move { wezterm_fs_explorer::run_explorer(&start_dir, config).await })
     }
 }

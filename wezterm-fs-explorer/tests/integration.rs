@@ -10,10 +10,8 @@ use tempfile::TempDir;
 
 // Import from the library crate
 use wezterm_fs_explorer::{
-    detect_path_type, normalize_path, to_windows_path, to_wsl_path, PathType,
-    detect_shell, Shell,
-    FuzzySearch,
-    IpcServer,
+    detect_path_type, detect_shell, normalize_path, to_windows_path, to_wsl_path, FuzzySearch,
+    IpcServer, PathType, Shell,
 };
 
 // ==============================================================================
@@ -73,11 +71,20 @@ fn create_test_structure(base: &Path) -> anyhow::Result<()> {
 #[test]
 fn test_path_type_detection_windows() {
     // Windows absolute paths
-    assert_eq!(detect_path_type(Path::new(r"C:\Users\test")), PathType::Windows);
-    assert_eq!(detect_path_type(Path::new(r"D:\data\file.txt")), PathType::Windows);
+    assert_eq!(
+        detect_path_type(Path::new(r"C:\Users\test")),
+        PathType::Windows
+    );
+    assert_eq!(
+        detect_path_type(Path::new(r"D:\data\file.txt")),
+        PathType::Windows
+    );
 
     // UNC paths
-    assert_eq!(detect_path_type(Path::new(r"\\server\share")), PathType::Windows);
+    assert_eq!(
+        detect_path_type(Path::new(r"\\server\share")),
+        PathType::Windows
+    );
 }
 
 #[test]
@@ -91,7 +98,10 @@ fn test_path_type_detection_wsl() {
 fn test_path_type_detection_unix() {
     // Standard Unix paths
     assert_eq!(detect_path_type(Path::new("/home/user")), PathType::Unix);
-    assert_eq!(detect_path_type(Path::new("/usr/local/bin")), PathType::Unix);
+    assert_eq!(
+        detect_path_type(Path::new("/usr/local/bin")),
+        PathType::Unix
+    );
 }
 
 #[test]
@@ -144,7 +154,10 @@ fn test_path_conversion_roundtrip() {
 fn test_shell_detection_returns_valid_shell() {
     let shell = detect_shell();
     // Should return one of the known shells
-    matches!(shell, Shell::PowerShell | Shell::GitBash | Shell::WslBash | Shell::Cmd | Shell::Unknown);
+    matches!(
+        shell,
+        Shell::PowerShell | Shell::GitBash | Shell::WslBash | Shell::Cmd | Shell::Unknown
+    );
 }
 
 #[test]
@@ -186,7 +199,8 @@ fn test_fuzzy_search_basic_matching() {
 
     // Verify at least one result contains "readme"
     let has_readme = results.iter().any(|r| {
-        r.path.file_name()
+        r.path
+            .file_name()
             .and_then(|n| n.to_str())
             .map(|s| s.to_lowercase().contains("readme"))
             .unwrap_or(false)
@@ -217,7 +231,10 @@ fn test_fuzzy_search_no_matches() {
     ]);
 
     let results = search.search("zzzznonexistent", 10);
-    assert!(results.is_empty(), "Non-matching query should return no results");
+    assert!(
+        results.is_empty(),
+        "Non-matching query should return no results"
+    );
 }
 
 #[test]
@@ -328,7 +345,10 @@ fn test_git_repo_initialization() {
     assert!(result.is_ok(), "Should initialize git repo");
 
     // Verify .git directory exists
-    assert!(temp_dir.path().join(".git").exists(), "Should have .git directory");
+    assert!(
+        temp_dir.path().join(".git").exists(),
+        "Should have .git directory"
+    );
 }
 
 #[test]
@@ -375,7 +395,10 @@ fn test_ipc_server_rebind() {
 
     // Should be able to rebind (IpcServer removes existing socket)
     let server2 = IpcServer::bind(&socket_path);
-    assert!(server2.is_ok(), "Should rebind after previous server dropped");
+    assert!(
+        server2.is_ok(),
+        "Should rebind after previous server dropped"
+    );
 }
 
 // ==============================================================================
@@ -397,7 +420,10 @@ fn test_path_utils_with_fuzzy_search() {
 
     // Search for "main" (part of filename main.rs)
     let results = search.search("main", 10);
-    assert!(!results.is_empty(), "Should find paths with 'main' in filename");
+    assert!(
+        !results.is_empty(),
+        "Should find paths with 'main' in filename"
+    );
 
     // Verify path type detection still works on results
     for result in &results {
@@ -511,7 +537,10 @@ fn test_fuzzy_search_performance_many_items() {
     let elapsed = start.elapsed();
 
     assert!(!results.is_empty());
-    assert!(elapsed.as_millis() < 1000, "Search should complete in < 1 second");
+    assert!(
+        elapsed.as_millis() < 1000,
+        "Search should complete in < 1 second"
+    );
 }
 
 #[test]
@@ -525,5 +554,8 @@ fn test_path_conversion_performance() {
     }
 
     let elapsed = start.elapsed();
-    assert!(elapsed.as_millis() < 500, "1000 conversions should complete in < 500ms");
+    assert!(
+        elapsed.as_millis() < 500,
+        "1000 conversions should complete in < 500ms"
+    );
 }

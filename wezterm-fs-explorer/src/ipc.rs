@@ -71,7 +71,12 @@ mod platform {
             Ok(Self { inner })
         }
 
-        pub fn into_split(self) -> (tokio::io::ReadHalf<UnixStream>, tokio::io::WriteHalf<UnixStream>) {
+        pub fn into_split(
+            self,
+        ) -> (
+            tokio::io::ReadHalf<UnixStream>,
+            tokio::io::WriteHalf<UnixStream>,
+        ) {
             tokio::io::split(self.inner)
         }
     }
@@ -484,7 +489,10 @@ mod tests {
         let server_task = tokio::spawn(async move {
             let mut stream = server.accept().await.expect("Failed to accept connection");
             let mut buffer = [0u8; 5];
-            stream.read_exact(&mut buffer).await.expect("Failed to read");
+            stream
+                .read_exact(&mut buffer)
+                .await
+                .expect("Failed to read");
             assert_eq!(&buffer, b"hello");
             stream.write_all(b"world").await.expect("Failed to write");
         });
@@ -502,7 +510,10 @@ mod tests {
 
         // Receive response
         let mut buffer = [0u8; 5];
-        client.read_exact(&mut buffer).await.expect("Failed to read");
+        client
+            .read_exact(&mut buffer)
+            .await
+            .expect("Failed to read");
         assert_eq!(&buffer, b"world");
 
         // Wait for server to finish

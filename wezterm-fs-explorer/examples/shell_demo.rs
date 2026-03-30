@@ -11,11 +11,7 @@ fn main() {
     println!();
 
     // Demonstrate command translation
-    let commands = vec![
-        "cd $HOME && ls -la",
-        "echo $VAR",
-        "cd /path/to/dir && pwd",
-    ];
+    let commands = vec!["cd $HOME && ls -la", "echo $VAR", "cd /path/to/dir && pwd"];
 
     println!("Command translations for {:?}:", shell);
     for cmd in commands {
@@ -41,12 +37,7 @@ fn main() {
     }
 
     // Demonstrate quoting
-    let strings = vec![
-        "simple",
-        "with space",
-        "with \"quotes\"",
-        "with $variable",
-    ];
+    let strings = vec!["simple", "with space", "with \"quotes\"", "with $variable"];
 
     println!("String quoting for {:?}:", shell);
     for s in strings {

@@ -147,11 +147,15 @@ function M.new(wezterm, schemes, shared)
   local tab_cache = {}
 
   -- Read panel state from GLOBAL (shared memory, zero IPC)
+  local function window_state_key(window)
+    -- share-data objects behind wezterm.GLOBAL only accept string object keys.
+    return tostring(window:window_id())
+  end
+
   local function read_panel_state(window)
     local global_state = wezterm.GLOBAL.codex_ui_panel_state
     if not global_state then return {} end
-    local window_id = window:window_id()
-    return global_state[window_id] or {}
+    return global_state[window_state_key(window)] or {}
   end
 
   -- Build left status bar: panel toggle indicators
