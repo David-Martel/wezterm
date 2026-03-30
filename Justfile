@@ -206,3 +206,18 @@ pre-commit: fmt clippy test-nextest
 # CI-like validation (comprehensive checks)
 ci-validate: fmt clippy test-nextest coverage check-tools
     Write-Host "`n=== CI Validation Complete ===" -ForegroundColor Green
+
+# ==============================================================================
+# Runtime Integration Testing
+# ==============================================================================
+
+# Post-build smoke tests (binary presence, CLI flags, subcommands, config validation)
+test-postbuild:
+    pwsh -NoLogo -NoProfile -File tools/Test-PostBuild.ps1 -SkipGui
+
+# Integration tests (daemon lifecycle, IPC protocol, config validation)
+test-integration:
+    pwsh -NoLogo -NoProfile -File tools/Test-Integration.ps1
+
+# Run all runtime tests (post-build + integration)
+test-runtime: test-postbuild test-integration

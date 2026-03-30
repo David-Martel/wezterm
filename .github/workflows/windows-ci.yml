@@ -87,6 +87,40 @@ jobs:
       - name: Run tests
         run: cargo nextest run --workspace --no-fail-fast
 
+      - name: Install binaries for integration tests
+        shell: pwsh
+        run: |
+          $installDir = "$env:RUNNER_TEMP\wezterm-test-install"
+          New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+          $binaries = @(
+            'wezterm.exe', 'wezterm-gui.exe', 'wezterm-mux-server.exe',
+            'strip-ansi-escapes.exe', 'wezterm-utils-daemon.exe',
+            'wezterm-watch.exe', 'wezterm-fs-explorer.exe'
+          )
+          foreach ($b in $binaries) {
+            $src = "target\debug\$b"
+            if (Test-Path $src) {
+              Copy-Item $src $installDir\
+              Write-Host "Copied $b" -ForegroundColor Green
+            } else {
+              $srcRelease = "target\release\$b"
+              if (Test-Path $srcRelease) {
+                Copy-Item $srcRelease $installDir\
+                Write-Host "Copied $b (release)" -ForegroundColor Green
+              } else {
+                Write-Host "Skipped $b (not found)" -ForegroundColor Yellow
+              }
+            }
+          }
+
+      - name: Run integration tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $installDir = "$env:RUNNER_TEMP\wezterm-test-install"
+          pwsh -NoLogo -NoProfile -File tools/Test-PostBuild.ps1 -InstallDir $installDir -SkipGui
+          pwsh -NoLogo -NoProfile -File tools/Test-Integration.ps1 -InstallDir $installDir
+
       - name: Run clippy (without sccache wrapper)
         run: pwsh -NoLogo -NoProfile -File tools/hooks/Invoke-WorkspaceRustChecks.ps1 -Task clippy
         env:
