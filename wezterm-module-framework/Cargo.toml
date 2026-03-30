@@ -44,5 +44,12 @@ url = { workspace = true }
 # Platform utilities
 dirs = "5.0"
 
+# Optional IPC bridge to daemon
+wezterm-utils-daemon = { path = "../wezterm-utils-daemon", optional = true }
+
+[features]
+default = ["daemon-ipc"]
+daemon-ipc = ["dep:wezterm-utils-daemon"]
+
 [dev-dependencies]
 tempfile = { workspace = true }
