@@ -25,7 +25,6 @@ rustflags = ["-C", "target-feature=+crt-static"]
 # Override global sccache rustc-wrapper — sccache port conflicts cause clippy failures.
 # Set RUSTC_WRAPPER=sccache explicitly in Justfile tasks that benefit from caching.
 rustc-wrapper = ""
-incremental = true                 # Enable incremental compilation by default
 # jobs = 8                         # Uncomment to override auto-detected parallelism
 
 # Shared target directory for all workspace projects
@@ -35,8 +34,8 @@ incremental = true                 # Enable incremental compilation by default
 # ----------------------------------------------------------------------------
 # Profile-Specific Settings
 # ----------------------------------------------------------------------------
-[profile.dev]
-incremental = true                 # Fast iterative builds during development
+# Note: [profile.dev] incremental = false is set in workspace Cargo.toml
+# to prefer sccache over incremental state. Do not override it here.
 
 [profile.release]
 incremental = false                # Disable for release builds (better optimization)

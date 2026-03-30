@@ -44,16 +44,28 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
           restore-keys: |
             windows-cargo-
 
+      - name: Cache dev tool binaries (nextest, ast-grep)
+        id: tool-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-nextest*
+            ~/.cargo/bin/sg*
+            ~/.cargo/bin/ast-grep*
+          key: windows-tools-nextest-astgrep-v1
+
       - name: Install nextest
+        if: steps.tool-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p ${env:CARGO_HOME}\..\bin
           curl -LsSf https://get.nexte.st/latest/windows | tar zxf - -C ${env:CARGO_HOME}\..\bin
 
       - name: Install ast-grep
+        if: steps.tool-cache.outputs.cache-hit != 'true'
         run: cargo install ast-grep --locked
         env:
           RUSTC_WRAPPER: ""
