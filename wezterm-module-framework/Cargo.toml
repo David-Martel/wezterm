@@ -38,6 +38,7 @@ filedescriptor = { workspace = true }
 
 # Data types
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 rangeset = { workspace = true }
 url = { workspace = true }
 

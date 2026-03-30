@@ -3,6 +3,7 @@
 //! This module provides:
 //! - Background file watching with debouncing
 //! - Lua API for registering watches and polling events
+//! - Event-driven callbacks via WezTerm's `wezterm.on` event system
 //! - Gitignore-aware filtering
 //! - MuxNotification forwarding for GUI-thread integration
 //!
@@ -11,7 +12,7 @@
 //! `WatcherModule` is `Send + Sync`. It uses a single aggregator thread for all
 //! watch events, avoiding per-watcher thread spawning.
 //!
-//! ## Example (Lua)
+//! ## Example (Lua) — Polling
 //!
 //! ```lua
 //! local id = wezterm.watcher.watch("/path/to/dir", { recursive = true })
@@ -24,6 +25,29 @@
 //!
 //! wezterm.watcher.unwatch(id)
 //! ```
+//!
+//! ## Example (Lua) — Event-Driven Callbacks
+//!
+//! ```lua
+//! -- Register a handler using the standard wezterm.on API:
+//! wezterm.on('file-watch-event', function(event)
+//!   -- event.subscription_id: number
+//!   -- event.kind: "create" | "modify" | "delete" | "rename" | "error"
+//!   -- event.path: string or nil
+//!   wezterm.log_info('File changed: ' .. event.kind .. ' ' .. (event.path or ''))
+//! end)
+//!
+//! -- Or use the convenience wrapper:
+//! wezterm.watcher.on_event(function(event)
+//!   wezterm.log_info('Got event: ' .. event.kind)
+//! end)
+//!
+//! -- Enable event emission (disabled by default to avoid overhead):
+//! wezterm.watcher.set_emit_events(true)
+//!
+//! local id = wezterm.watcher.watch("/path/to/dir", { recursive = true })
+//! -- Events now fire automatically; no need to poll.
+//! ```
 
 use crate::{Capabilities, Module, ModuleContext, ModuleState};
 use anyhow::Result;
@@ -34,7 +58,7 @@ use mux::{Mux, MuxNotification};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use wezterm_fs_utils::watcher::{WatchEvent, WatchEventKind, Watcher};
@@ -73,6 +97,10 @@ pub struct WatcherModuleHandle {
     event_tx: Arc<Mutex<Option<Sender<(WatchCallbackId, WatchEvent)>>>>,
     /// Buffered events that can be polled from Lua.
     event_queue: Arc<Mutex<VecDeque<StoredWatchEvent>>>,
+    /// When true, the aggregator thread emits `file-watch-event` via the
+    /// WezTerm Lua event system (`wezterm.on`). Disabled by default to
+    /// avoid scheduling main-thread work when no handlers are registered.
+    emit_events: Arc<AtomicBool>,
 }
 
 impl WatcherModuleHandle {
@@ -194,6 +222,76 @@ impl WatcherModuleHandle {
         }
         queue.push_back(event);
     }
+
+    /// Enable or disable event emission via the Lua event system.
+    ///
+    /// When enabled, each file watch event is also emitted as a
+    /// `file-watch-event` through WezTerm's `wezterm.on` / `wezterm.emit`
+    /// system. Lua scripts can register handlers with:
+    ///
+    /// ```lua
+    /// wezterm.on('file-watch-event', function(event)
+    ///   -- event.subscription_id, event.kind, event.path
+    /// end)
+    /// ```
+    pub fn set_emit_events(&self, enabled: bool) {
+        self.emit_events.store(enabled, Ordering::Relaxed);
+        log::info!("Watcher event emission {}", if enabled { "enabled" } else { "disabled" });
+    }
+
+    /// Returns true if Lua event emission is enabled.
+    pub fn emit_events_enabled(&self) -> bool {
+        self.emit_events.load(Ordering::Relaxed)
+    }
+
+    /// Emit a file watch event through WezTerm's Lua event system.
+    ///
+    /// Schedules a `file-watch-event` emission on the main thread.
+    /// This is safe to call from any thread (including the aggregator
+    /// background thread). The actual Lua callback invocation happens
+    /// asynchronously on the main thread.
+    fn emit_lua_event(&self, subscription_id: WatchCallbackId, kind: String, path: Option<PathBuf>) {
+        if !self.emit_events.load(Ordering::Relaxed) {
+            return;
+        }
+
+        // Fire-and-forget to the main thread. The outer spawn_into_main_thread
+        // gets us onto the main thread (requires Send). The inner
+        // promise::spawn::spawn lifts the Send requirement so we can work
+        // with Rc<mlua::Lua> from config::with_lua_config_on_main_thread.
+        let path_str = path.map(|p| p.to_string_lossy().to_string());
+        promise::spawn::spawn_into_main_thread(async move {
+            let _ = promise::spawn::spawn(async move {
+                if let Err(e) = config::with_lua_config_on_main_thread(|lua| {
+                    let kind = kind.clone();
+                    let path_str = path_str.clone();
+                    async move {
+                        if let Some(lua) = lua {
+                            let event_table = lua.create_table()?;
+                            event_table.set("subscription_id", subscription_id)?;
+                            event_table.set("kind", kind.as_str())?;
+                            if let Some(ref p) = path_str {
+                                event_table.set("path", p.as_str())?;
+                            }
+                            let args = lua.pack_multi(event_table)?;
+                            config::lua::emit_event(
+                                &lua,
+                                ("file-watch-event".to_string(), args),
+                            )
+                            .await?;
+                        }
+                        Ok(())
+                    }
+                })
+                .await
+                {
+                    log::debug!("Failed to emit file-watch-event: {:#}", e);
+                }
+            })
+            .await;
+        })
+        .detach();
+    }
 }
 
 /// File watcher module.
@@ -219,6 +317,7 @@ impl WatcherModule {
                 next_id: Arc::new(AtomicU64::new(1)),
                 event_tx: Arc::new(Mutex::new(Some(event_tx))),
                 event_queue: Arc::new(Mutex::new(VecDeque::new())),
+                emit_events: Arc::new(AtomicBool::new(false)),
             },
             event_rx: Some(event_rx),
             shutdown_tx: None,
@@ -354,15 +453,20 @@ impl Module for WatcherModule {
                                     path: event.path.clone(),
                                 });
 
-                                // 2. Notify the Mux so GUI-thread subscribers
-                                //    can process the event. Use Alert with a
-                                //    descriptive message that includes the
-                                //    subscription ID and event details.
+                                // 2. Emit through the Lua event system if enabled.
+                                //    This schedules a `file-watch-event` emission
+                                //    on the main thread so Lua handlers registered
+                                //    via `wezterm.on('file-watch-event', fn)` fire.
+                                handle.emit_lua_event(
+                                    id,
+                                    kind_str.to_string(),
+                                    event.path.clone(),
+                                );
+
+                                // 3. Notify the Mux so GUI-thread subscribers
+                                //    can process the event. Send Empty as a
+                                //    lightweight "something changed" signal.
                                 if let Some(mux) = Mux::try_get() {
-                                    // Send Empty notification as a lightweight
-                                    // "something changed" signal. Subscribers
-                                    // interested in watcher events should poll
-                                    // via the Lua API (wezterm.watcher.poll_events).
                                     mux.notify(MuxNotification::Empty);
                                 }
                             }
@@ -508,10 +612,62 @@ impl Module for WatcherModule {
 
         // wezterm.watcher.count()
         // Returns the number of active watch subscriptions
-        let count_handle = handle;
+        let count_handle = handle.clone();
         watcher_mod.set(
             "count",
             lua.create_function(move |_, ()| Ok(count_handle.subscription_count()))?,
+        )?;
+
+        // wezterm.watcher.set_emit_events(enabled)
+        // Enable or disable event-driven callbacks via `wezterm.on('file-watch-event', fn)`.
+        // When enabled, each file watch event is emitted through WezTerm's Lua event
+        // system in addition to being buffered for `poll_events`.
+        // Disabled by default to avoid main-thread scheduling overhead when no
+        // event handlers are registered.
+        let emit_handle = handle.clone();
+        watcher_mod.set(
+            "set_emit_events",
+            lua.create_function(move |_, enabled: bool| {
+                emit_handle.set_emit_events(enabled);
+                Ok(())
+            })?,
+        )?;
+
+        // wezterm.watcher.emit_events_enabled()
+        // Returns true if event emission is currently enabled.
+        let emit_query_handle = handle.clone();
+        watcher_mod.set(
+            "emit_events_enabled",
+            lua.create_function(move |_, ()| Ok(emit_query_handle.emit_events_enabled()))?,
+        )?;
+
+        // wezterm.watcher.on_event(callback)
+        // Convenience wrapper that registers the callback via `wezterm.on('file-watch-event', fn)`
+        // and enables event emission if not already enabled.
+        //
+        // The callback receives a single table argument:
+        //   { subscription_id = number, kind = string, path = string|nil }
+        //
+        // Equivalent to:
+        //   wezterm.on('file-watch-event', callback)
+        //   wezterm.watcher.set_emit_events(true)
+        let on_event_handle = handle;
+        watcher_mod.set(
+            "on_event",
+            lua.create_function(move |lua_ctx, func: mlua::Function| {
+                // Register via the standard wezterm.on event system
+                config::lua::register_event(
+                    lua_ctx,
+                    ("file-watch-event".to_string(), func),
+                )?;
+
+                // Auto-enable event emission
+                if !on_event_handle.emit_events_enabled() {
+                    on_event_handle.set_emit_events(true);
+                }
+
+                Ok(())
+            })?,
         )?;
 
         Ok(())
@@ -579,5 +735,67 @@ mod tests {
             .unwatch(999)
             .expect("unwatch of nonexistent id should not error");
         assert_eq!(module.subscription_count(), 0);
+    }
+
+    #[test]
+    fn test_emit_events_default_disabled() {
+        let module = WatcherModule::new();
+        let handle = module.handle();
+        assert!(
+            !handle.emit_events_enabled(),
+            "event emission should be disabled by default"
+        );
+    }
+
+    #[test]
+    fn test_set_emit_events() {
+        let module = WatcherModule::new();
+        let handle = module.handle();
+
+        handle.set_emit_events(true);
+        assert!(handle.emit_events_enabled());
+
+        handle.set_emit_events(false);
+        assert!(!handle.emit_events_enabled());
+    }
+
+    #[test]
+    fn test_emit_lua_event_noop_when_disabled() {
+        // When emit_events is false, emit_lua_event should return
+        // immediately without scheduling anything. This is a smoke
+        // test verifying it doesn't panic.
+        let module = WatcherModule::new();
+        let handle = module.handle();
+        assert!(!handle.emit_events_enabled());
+
+        // Should be a no-op (no main thread running, but the early
+        // return prevents any scheduling attempt).
+        handle.emit_lua_event(1, "modify".to_string(), Some(PathBuf::from("/tmp/test")));
+    }
+
+    #[test]
+    fn test_poll_events_still_works_with_emit_enabled() {
+        // Verify that enabling event emission doesn't interfere with
+        // the poll_events queue.
+        let module = WatcherModule::new();
+        let handle = module.handle();
+
+        handle.set_emit_events(true);
+
+        // Push an event manually
+        handle.push_event(StoredWatchEvent {
+            subscription_id: 42,
+            kind: "modify".to_string(),
+            path: Some(PathBuf::from("/tmp/test.txt")),
+        });
+
+        let events = handle.poll_events(10);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].subscription_id, 42);
+        assert_eq!(events[0].kind, "modify");
+        assert_eq!(
+            events[0].path.as_deref(),
+            Some(PathBuf::from("/tmp/test.txt").as_path())
+        );
     }
 }

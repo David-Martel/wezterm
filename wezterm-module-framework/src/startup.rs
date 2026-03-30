@@ -50,9 +50,18 @@ pub fn initialize_modules() {
 ///
 /// Called during Lua context setup (config reload, new window, etc.)
 /// to make module APIs available to the user's .wezterm.lua.
+///
+/// This registers both per-module APIs (from the module registry) and
+/// the daemon IPC API (`wezterm.daemon.*`).
 pub fn register_lua_apis(lua: &mlua::Lua) -> anyhow::Result<()> {
     let registry = ModuleRegistry::global();
     registry.register_all_lua_apis(lua)?;
+
+    // Register daemon client Lua API (wezterm.daemon.*)
+    if let Err(e) = crate::ipc::register_lua_api(lua) {
+        log::warn!("Failed to register daemon Lua API: {e}");
+    }
+
     log::debug!("Module Lua APIs registered");
     Ok(())
 }
