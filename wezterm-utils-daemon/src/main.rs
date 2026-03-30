@@ -3,18 +3,12 @@
 //! A high-performance daemon that routes JSON-RPC 2.0 messages between WezTerm utilities
 //! using Windows Named Pipes.
 
-pub mod client;
-mod config;
-mod connections;
-mod error;
-pub mod protocol;
-mod router;
-mod server;
+// Modules are in the library crate (lib.rs)
+use wezterm_utils_daemon::config::Config;
+use wezterm_utils_daemon::error::Result;
+use wezterm_utils_daemon::server::IpcServer;
 
 use clap::{Parser, Subcommand};
-use config::Config;
-use error::Result;
-use server::IpcServer;
 use std::path::PathBuf;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -212,8 +206,8 @@ async fn validate_config(config_path: Option<PathBuf>) -> Result<()> {
 async fn show_status() -> Result<()> {
     info!("Requesting daemon status...");
 
-    use crate::protocol::{JsonRpcRequest, RequestId};
-    use server::connect_client;
+    use wezterm_utils_daemon::protocol::{JsonRpcRequest, RequestId};
+    use wezterm_utils_daemon::server::connect_client;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     // Connect to daemon

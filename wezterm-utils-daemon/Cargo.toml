@@ -6,6 +6,14 @@ authors = ["David Martel"]
 description = "High-performance IPC Router Daemon for WezTerm utilities using Named Pipes and JSON-RPC 2.0"
 license = "MIT"
 
+[lib]
+name = "wezterm_utils_daemon"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wezterm-utils-daemon"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1.41", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
