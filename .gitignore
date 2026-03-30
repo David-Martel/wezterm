@@ -64,7 +64,8 @@ dhat-heap.json
 /docs/doxygen/
 
 # Temp/log files from development
-TODO.md
+# NOTE: TODO.md is NOT ignored — it's the multi-agent task tracker
+# that must be visible to all LLM agents working in this directory.
 *.log
 clippy-output.txt
 server.log
