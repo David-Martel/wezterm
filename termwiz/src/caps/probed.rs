@@ -104,17 +104,15 @@ impl<'a> ProbeCapabilities<'a> {
                 match self.read.read(&mut byte) {
                     Ok(0) => break,
                     Ok(_) => {
-                        parser.parse(&byte, |action| {
-                            match action {
-                                Action::Esc(Esc::Code(EscCode::StringTerminator)) => {}
-                                Action::DeviceControl(dev) => {
-                                    if let DeviceControlMode::Data(b) = dev {
-                                        term.push(b);
-                                    }
+                        parser.parse(&byte, |action| match action {
+                            Action::Esc(Esc::Code(EscCode::StringTerminator)) => {}
+                            Action::DeviceControl(dev) => {
+                                if let DeviceControlMode::Data(b) = dev {
+                                    term.push(b);
                                 }
-                                _ => {
-                                    done = true;
-                                }
+                            }
+                            _ => {
+                                done = true;
                             }
                         });
                     }
@@ -199,43 +197,41 @@ impl<'a> ProbeCapabilities<'a> {
                 match self.read.read(&mut byte) {
                     Ok(0) => break,
                     Ok(_) => {
-                        parser.parse(&byte, |action| {
-                            match action {
-                                Action::DeviceControl(_) => {}
-                                Action::Esc(Esc::Code(EscCode::StringTerminator)) => {}
-                                Action::CSI(csi) => match csi {
-                                    CSI::Window(win) => match *win {
-                                        Window::ResizeWindowCells { width, height } => {
-                                            let width = width.unwrap_or(1);
-                                            let height = height.unwrap_or(1);
-                                            if width > 0 && height > 0 {
-                                                let width = width as usize;
-                                                let height = height as usize;
-                                                if swapped_cols_rows {
-                                                    size.rows = width;
-                                                    size.cols = height;
-                                                } else {
-                                                    size.rows = height;
-                                                    size.cols = width;
-                                                }
+                        parser.parse(&byte, |action| match action {
+                            Action::DeviceControl(_) => {}
+                            Action::Esc(Esc::Code(EscCode::StringTerminator)) => {}
+                            Action::CSI(csi) => match csi {
+                                CSI::Window(win) => match *win {
+                                    Window::ResizeWindowCells { width, height } => {
+                                        let width = width.unwrap_or(1);
+                                        let height = height.unwrap_or(1);
+                                        if width > 0 && height > 0 {
+                                            let width = width as usize;
+                                            let height = height as usize;
+                                            if swapped_cols_rows {
+                                                size.rows = width;
+                                                size.cols = height;
+                                            } else {
+                                                size.rows = height;
+                                                size.cols = width;
                                             }
                                         }
-                                        Window::ReportCellSizePixelsResponse { width, height } => {
-                                            let width = width.unwrap_or(1);
-                                            let height = height.unwrap_or(1);
-                                            if width > 0 && height > 0 {
-                                                let width = width as usize;
-                                                let height = height as usize;
-                                                size.xpixel = width;
-                                                size.ypixel = height;
-                                            }
+                                    }
+                                    Window::ReportCellSizePixelsResponse { width, height } => {
+                                        let width = width.unwrap_or(1);
+                                        let height = height.unwrap_or(1);
+                                        if width > 0 && height > 0 {
+                                            let width = width as usize;
+                                            let height = height as usize;
+                                            size.xpixel = width;
+                                            size.ypixel = height;
                                         }
-                                        _ => done = true,
-                                    },
+                                    }
                                     _ => done = true,
                                 },
                                 _ => done = true,
-                            }
+                            },
+                            _ => done = true,
                         });
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {

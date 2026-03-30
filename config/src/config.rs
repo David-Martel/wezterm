@@ -21,8 +21,8 @@ use crate::units::Dimension;
 use crate::unix::UnixDomain;
 use crate::wsl::WslDomain;
 use crate::{
-    default_config_with_overrides_applied, default_one_point_oh, default_one_point_oh_f64,
-    default_true, default_win32_acrylic_accent_color, CellWidth, GpuInfo,
+    compute_loaded_config_watch_paths, default_config_with_overrides_applied, default_one_point_oh,
+    default_one_point_oh_f64, default_true, default_win32_acrylic_accent_color, CellWidth, GpuInfo,
     IntegratedTitleButtonColor, KeyMapPreference, LoadedConfig, MouseEventTriggerMods, RgbaColor,
     SerialDomain, SystemBackdrop, WebGpuPowerPreference, CONFIG_DIRS, CONFIG_FILE_OVERRIDE,
     CONFIG_OVERRIDES, CONFIG_SKIP, HOME_DIR,
@@ -889,7 +889,6 @@ pub struct Config {
 }
 impl_lua_conversion_dynamic!(Config);
 
-
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -953,9 +952,13 @@ fn parse_table(chars: &mut Peekable<Chars>) -> Result<(), ()> {
             chars.next(); // '['
             parse_expr(chars)?;
             skip_whitespace(chars);
-            if chars.next() != Some(']') { return Err(()); }
+            if chars.next() != Some(']') {
+                return Err(());
+            }
             skip_whitespace(chars);
-            if chars.next() != Some('=') { return Err(()); }
+            if chars.next() != Some('=') {
+                return Err(());
+            }
             skip_whitespace(chars);
             parse_expr(chars)?;
         } else {
@@ -989,8 +992,13 @@ fn parse_table(chars: &mut Peekable<Chars>) -> Result<(), ()> {
 
         skip_whitespace(chars);
         match chars.peek() {
-            Some(&',') | Some(&';') => { chars.next(); },
-            Some(&'}') => { chars.next(); return Ok(()); },
+            Some(&',') | Some(&';') => {
+                chars.next();
+            }
+            Some(&'}') => {
+                chars.next();
+                return Ok(());
+            }
             _ => return Err(()),
         }
     }
@@ -999,7 +1007,16 @@ fn parse_table(chars: &mut Peekable<Chars>) -> Result<(), ()> {
 fn parse_number(chars: &mut Peekable<Chars>) -> Result<(), ()> {
     let mut num_str = String::new();
     while let Some(&c) = chars.peek() {
-        if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E' || c == 'x' || c == 'X' || c.is_ascii_hexdigit() {
+        if c.is_ascii_digit()
+            || c == '.'
+            || c == '-'
+            || c == '+'
+            || c == 'e'
+            || c == 'E'
+            || c == 'x'
+            || c == 'X'
+            || c.is_ascii_hexdigit()
+        {
             num_str.push(c);
             chars.next();
         } else {
@@ -1189,6 +1206,10 @@ impl Config {
                         file_name: Some(path_item.path.clone()),
                         lua: None,
                         warnings: vec![],
+                        watch_paths: compute_loaded_config_watch_paths(
+                            Some(path_item.path.as_path()),
+                            None,
+                        ),
                     }
                 }
                 Ok(None) => continue,
@@ -1208,6 +1229,7 @@ impl Config {
                 file_name: None,
                 lua: None,
                 warnings: vec![],
+                watch_paths: vec![],
             },
             Ok(cfg) => cfg,
         }
@@ -1219,11 +1241,14 @@ impl Config {
                 Ok(default_config_with_overrides_applied()?.compute_extra_defaults(None))
             });
 
+        let lua = make_lua_context(Path::new(""))?;
+        let watch_paths = compute_loaded_config_watch_paths(None, Some(&lua));
         Ok(LoadedConfig {
             config: Ok(config?),
             file_name: None,
-            lua: Some(make_lua_context(Path::new(""))?),
+            lua: Some(lua),
             warnings,
+            watch_paths,
         })
     }
 
@@ -1245,8 +1270,8 @@ impl Config {
         file.read_to_string(&mut s)?;
         let lua = make_lua_context(p)?;
 
-        let (config, warnings) =
-            wezterm_dynamic::Error::capture_warnings(|| -> anyhow::Result<Config> {
+        let (loaded_config, mut warnings) = wezterm_dynamic::Error::capture_warnings(
+            || -> anyhow::Result<(Config, Vec<String>)> {
                 let cfg: Config;
 
                 let config: mlua::Value = smol::block_on(
@@ -1259,6 +1284,19 @@ impl Config {
                 )?;
                 let config = Config::apply_overrides_to(&lua, config)?;
                 let config = Config::apply_overrides_obj_to(&lua, config, overrides)?;
+                let validator_diagnostics =
+                    crate::lua::run_config_validators(&lua, config.clone())?;
+                if !validator_diagnostics.errors.is_empty() {
+                    anyhow::bail!(
+                        "Lua config validation failed:\n{}",
+                        validator_diagnostics
+                            .errors
+                            .iter()
+                            .map(|message| format!("  - {message}"))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+                }
                 cfg = Config::from_lua(config, &lua).with_context(|| {
                     format!(
                         "Error converting lua value returned by script {} to Config struct",
@@ -1275,15 +1313,19 @@ impl Config {
                 if let Some(dir) = p.parent() {
                     std::env::set_var("WEZTERM_CONFIG_DIR", dir);
                 }
-                Ok(cfg)
-            });
-        let cfg = config?;
+                Ok((cfg, validator_diagnostics.warnings))
+            },
+        );
+        let (cfg, validator_warnings) = loaded_config?;
+        warnings.extend(validator_warnings);
+        let watch_paths = compute_loaded_config_watch_paths(Some(p), Some(&lua));
 
         Ok(Some(LoadedConfig {
             config: Ok(cfg.compute_extra_defaults(Some(p))),
             file_name: Some(p.to_path_buf()),
             lua: Some(lua),
             warnings,
+            watch_paths,
         }))
     }
 
