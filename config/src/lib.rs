@@ -4,6 +4,7 @@ use anyhow::{anyhow, bail, Context, Error};
 use lazy_static::lazy_static;
 use mlua::Lua;
 use ordered_float::NotNan;
+use serde::Serialize;
 use smol::channel::{Receiver, Sender};
 use smol::prelude::*;
 use std::cell::RefCell;
@@ -43,6 +44,9 @@ mod unix;
 mod version;
 pub mod window;
 mod wsl;
+
+#[cfg(test)]
+mod lib_test;
 
 pub use crate::config::*;
 pub use background::*;
@@ -467,10 +471,54 @@ pub fn configuration_warnings_and_errors() -> Vec<String> {
     CONFIG.get_warnings_and_errors()
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct ConfigValidationSnapshot {
+    pub generation: usize,
+    pub config_file: Option<PathBuf>,
+    pub watch_paths: Vec<PathBuf>,
+    pub warnings: Vec<String>,
+    pub error: Option<String>,
+    pub using_default_config: bool,
+}
+
+pub fn configuration_validation() -> ConfigValidationSnapshot {
+    CONFIG.validation_snapshot()
+}
+
+pub(crate) fn compute_loaded_config_watch_paths(
+    file_name: Option<&Path>,
+    lua: Option<&Lua>,
+) -> Vec<PathBuf> {
+    let mut watch_paths = vec![];
+
+    if let Some(path) = file_name {
+        if let Some(parent) = path.parent() {
+            if parent != *HOME_DIR {
+                watch_paths.push(parent.to_path_buf());
+            }
+        }
+        watch_paths.push(path.to_path_buf());
+    }
+
+    if let Some(lua) = lua {
+        if let Ok(mlua::Value::Table(tbl)) = lua.named_registry_value("wezterm-watch-paths") {
+            for path in tbl.sequence_values::<String>().flatten() {
+                watch_paths.push(PathBuf::from(path));
+            }
+        }
+    }
+
+    watch_paths.sort();
+    watch_paths.dedup();
+    watch_paths
+}
+
 struct ConfigInner {
     config: Arc<Config>,
     error: Option<String>,
     warnings: Vec<String>,
+    config_file: Option<PathBuf>,
+    watch_paths: Vec<PathBuf>,
     generation: usize,
     watcher: Option<notify::RecommendedWatcher>,
     subscribers: HashMap<usize, Box<dyn Fn() -> bool + Send>>,
@@ -482,6 +530,8 @@ impl ConfigInner {
             config: Arc::new(Config::default_config()),
             error: None,
             warnings: vec![],
+            config_file: None,
+            watch_paths: vec![],
             generation: 0,
             watcher: None,
             subscribers: HashMap::new(),
@@ -560,14 +610,6 @@ impl ConfigInner {
         }
     }
 
-    fn accumulate_watch_paths(lua: &Lua, watch_paths: &mut Vec<PathBuf>) {
-        if let Ok(mlua::Value::Table(tbl)) = lua.named_registry_value("wezterm-watch-paths") {
-            for path in tbl.sequence_values::<String>().flatten() {
-                watch_paths.push(PathBuf::from(path));
-            }
-        }
-    }
-
     /// Attempt to load the user's configuration.
     /// On success, clear any error and replace the current
     /// configuration.
@@ -579,30 +621,12 @@ impl ConfigInner {
             file_name,
             lua,
             warnings,
+            watch_paths,
         } = Config::load();
 
         self.warnings = warnings;
-
-        // Before we process the success/failure, extract and update
-        // any paths that we should be watching
-        let mut watch_paths = vec![];
-        if let Some(path) = file_name {
-            // Let's also watch the parent directory for folks that do
-            // things with symlinks:
-            if let Some(parent) = path.parent() {
-                // But avoid watching the home dir itself, so that we
-                // don't keep reloading every time something in the
-                // home dir changes!
-                // <https://github.com/wezterm/wezterm/issues/1895>
-                if parent != *HOME_DIR {
-                    watch_paths.push(parent.to_path_buf());
-                }
-            }
-            watch_paths.push(path);
-        }
-        if let Some(lua) = &lua {
-            ConfigInner::accumulate_watch_paths(lua, &mut watch_paths);
-        }
+        self.config_file = file_name.clone();
+        self.watch_paths = watch_paths;
 
         match config {
             Ok(config) => {
@@ -632,6 +656,7 @@ impl ConfigInner {
 
         self.notify();
         if self.config.automatically_reload_config {
+            let watch_paths = self.watch_paths.clone();
             for path in watch_paths {
                 self.watch_path(path);
             }
@@ -644,12 +669,16 @@ impl ConfigInner {
     fn use_defaults(&mut self) {
         self.config = Arc::new(Config::default_config());
         self.error.take();
+        self.config_file.take();
+        self.watch_paths.clear();
         self.generation += 1;
     }
 
     fn use_this_config(&mut self, cfg: Config) {
         self.config = Arc::new(cfg);
         self.error.take();
+        self.config_file.take();
+        self.watch_paths.clear();
         self.generation += 1;
     }
 
@@ -679,7 +708,20 @@ impl ConfigInner {
         config.dpi.replace(96.0);
         self.config = Arc::new(config);
         self.error.take();
+        self.config_file.take();
+        self.watch_paths.clear();
         self.generation += 1;
+    }
+
+    fn validation_snapshot(&self) -> ConfigValidationSnapshot {
+        ConfigValidationSnapshot {
+            generation: self.generation,
+            config_file: self.config_file.clone(),
+            watch_paths: self.watch_paths.clone(),
+            warnings: self.warnings.clone(),
+            error: self.error.clone(),
+            using_default_config: self.config_file.is_none() && self.error.is_none(),
+        }
     }
 }
 
@@ -698,6 +740,10 @@ impl Configuration {
         Self {
             inner: Mutex::new(ConfigInner::new()),
         }
+    }
+
+    pub fn validation_snapshot(&self) -> ConfigValidationSnapshot {
+        self.inner.lock().unwrap().validation_snapshot()
     }
 
     /// Returns the effective configuration.
@@ -823,6 +869,7 @@ pub struct LoadedConfig {
     pub file_name: Option<PathBuf>,
     pub lua: Option<mlua::Lua>,
     pub warnings: Vec<String>,
+    pub watch_paths: Vec<PathBuf>,
 }
 
 fn default_one_point_oh_f64() -> f64 {

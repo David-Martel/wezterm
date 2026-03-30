@@ -896,8 +896,16 @@ pub fn is_safe_lua_literal(s: &str) -> bool {
     let mut chars = s.trim().chars().peekable();
     if let Ok(_) = parse_expr(&mut chars) {
         skip_whitespace(&mut chars);
-        chars.next().is_none()
+        let is_consumed = chars.next().is_none();
+        if !is_consumed {
+            log::debug!(
+                "Rejected config override: trailing content after literal in {:?}",
+                s
+            );
+        }
+        is_consumed
     } else {
+        log::debug!("Rejected config override: not a safe Lua literal: {:?}", s);
         false
     }
 }

@@ -19,6 +19,7 @@ use wezterm_dynamic::{
 pub use mlua;
 
 static LUA_REGISTRY_USER_CALLBACK_COUNT: &str = "wezterm-user-callback-count";
+static LUA_REGISTRY_CONFIG_VALIDATORS: &str = "wezterm-config-validators";
 
 pub type SetupFunc = fn(&Lua) -> anyhow::Result<()>;
 
@@ -28,6 +29,12 @@ lazy_static::lazy_static! {
 
 pub fn add_context_setup_func(func: SetupFunc) {
     SETUP_FUNCS.lock().unwrap().push(func);
+}
+
+#[derive(Debug, Default)]
+pub struct ConfigValidatorDiagnostics {
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
 }
 
 pub fn get_or_create_module<'lua>(lua: &'lua Lua, name: &str) -> anyhow::Result<mlua::Table<'lua>> {
@@ -315,9 +322,14 @@ end
             .context("set wezterm.config_dir")?;
 
         lua.set_named_registry_value("wezterm-watch-paths", Vec::<String>::new())?;
+        lua.set_named_registry_value(LUA_REGISTRY_CONFIG_VALIDATORS, lua.create_table()?)?;
         wezterm_mod.set(
             "add_to_config_reload_watch_list",
             lua.create_function(add_to_config_reload_watch_list)?,
+        )?;
+        wezterm_mod.set(
+            "add_config_validator",
+            lua.create_function(add_config_validator)?,
         )?;
 
         wezterm_mod.set("target_triple", crate::wezterm_target_triple())?;
@@ -851,6 +863,97 @@ pub fn add_to_config_reload_watch_list(lua: &Lua, args: Variadic<String>) -> mlu
     watch_paths.extend_from_slice(&args);
     lua.set_named_registry_value("wezterm-watch-paths", watch_paths)?;
     Ok(())
+}
+
+fn add_config_validator(lua: &Lua, (name, func): (String, mlua::Function)) -> mlua::Result<()> {
+    let validators: Table = lua.named_registry_value(LUA_REGISTRY_CONFIG_VALIDATORS)?;
+    let entry = lua.create_table()?;
+    entry.set("name", name)?;
+    entry.set("callback", func)?;
+    validators.raw_push(entry)?;
+    Ok(())
+}
+
+fn extract_validator_messages(
+    table: &Table,
+    field: &str,
+    label: &str,
+) -> anyhow::Result<Vec<String>> {
+    match table.get::<_, Value>(field)? {
+        Value::Nil => Ok(vec![]),
+        Value::String(value) => Ok(vec![value.to_str()?.to_string()]),
+        Value::Table(values) => values
+            .sequence_values::<String>()
+            .collect::<mlua::Result<Vec<_>>>()
+            .map_err(Into::into),
+        value => anyhow::bail!(
+            "validator returned invalid `{label}` payload for `{field}`: expected string or array of strings, got {}",
+            value.type_name()
+        ),
+    }
+}
+
+pub fn run_config_validators(
+    lua: &Lua,
+    config: Value<'_>,
+) -> anyhow::Result<ConfigValidatorDiagnostics> {
+    let validators: Table = lua.named_registry_value(LUA_REGISTRY_CONFIG_VALIDATORS)?;
+    let wezterm_mod = get_or_create_module(lua, "wezterm")?;
+
+    let context = lua.create_table()?;
+    context.set("config_file", wezterm_mod.get::<_, String>("config_file")?)?;
+    context.set("config_dir", wezterm_mod.get::<_, String>("config_dir")?)?;
+    context.set("home_dir", wezterm_mod.get::<_, String>("home_dir")?)?;
+    context.set(
+        "executable_dir",
+        wezterm_mod.get::<_, String>("executable_dir")?,
+    )?;
+    context.set(
+        "target_triple",
+        wezterm_mod.get::<_, String>("target_triple")?,
+    )?;
+
+    let mut diagnostics = ConfigValidatorDiagnostics::default();
+
+    for validator_entry in validators.sequence_values::<Table>() {
+        let validator_entry = validator_entry?;
+        let name: String = validator_entry.get("name")?;
+        let callback: mlua::Function = validator_entry.get("callback")?;
+        let result = callback
+            .call::<_, Value>((config.clone(), context.clone()))
+            .with_context(|| format!("running config validator `{name}`"))?;
+
+        let Value::Table(result_table) = result else {
+            if matches!(result, Value::Nil) {
+                continue;
+            }
+            anyhow::bail!(
+                "config validator `{name}` must return nil or a table, got {}",
+                result.type_name()
+            );
+        };
+
+        diagnostics.warnings.extend(extract_validator_messages(
+            &result_table,
+            "warning",
+            "warning",
+        )?);
+        diagnostics.warnings.extend(extract_validator_messages(
+            &result_table,
+            "warnings",
+            "warnings",
+        )?);
+        diagnostics
+            .errors
+            .extend(extract_validator_messages(&result_table, "error", "error")?);
+        diagnostics.errors.extend(extract_validator_messages(
+            &result_table,
+            "errors",
+            "errors",
+        )?);
+    }
+
+    Ok(diagnostics)
 }
 
 #[cfg(test)]
