@@ -27,9 +27,8 @@ use uuid::Uuid;
 /// Maximum message size (1MB)
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
-/// Connection keep-alive interval
-#[expect(dead_code, reason = "reserved for keep-alive heartbeat implementation")]
-const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
+/// Connection keep-alive interval — used by the periodic heartbeat cleanup task
+pub(crate) const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Connection timeout after no activity
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(120);
@@ -44,7 +43,6 @@ pub struct Connection {
     pub name: RwLock<Option<String>>,
     pub capabilities: RwLock<Vec<String>>,
     pub subscriptions: RwLock<Vec<EventSubscription>>,
-    #[expect(dead_code, reason = "reserved for connection age metrics")]
     pub connected_at: Instant,
     pub last_activity: Arc<RwLock<Instant>>,
     pub tx: mpsc::UnboundedSender<JsonRpcMessage>,
@@ -243,23 +241,56 @@ impl ConnectionManager {
         removed
     }
 
-    /// Start periodic cleanup task
+    /// Start periodic heartbeat cleanup task.
+    ///
+    /// Ticks every [`KEEP_ALIVE_INTERVAL`] and removes connections that have
+    /// exceeded [`CONNECTION_TIMEOUT`] without activity.
     pub fn start_cleanup_task(self: Arc<Self>) {
         tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_secs(60));
+            let mut interval = time::interval(KEEP_ALIVE_INTERVAL);
             loop {
                 interval.tick().await;
                 self.cleanup_stale_connections();
             }
         });
     }
+
+    /// Return `(connection_id, uptime_seconds)` pairs for every active connection.
+    ///
+    /// Uptime is measured from `connected_at` (creation time), not from last activity.
+    pub fn connection_ages(&self) -> Vec<(String, u64)> {
+        self.connections
+            .iter()
+            .map(|entry| {
+                let conn = entry.value();
+                (conn.id.clone(), conn.connected_at.elapsed().as_secs())
+            })
+            .collect()
+    }
+
+    /// Age (in seconds) of the longest-lived active connection, or `None` if
+    /// there are no connections.
+    pub fn oldest_connection_age_secs(&self) -> Option<u64> {
+        self.connections
+            .iter()
+            .map(|entry| entry.value().connected_at.elapsed().as_secs())
+            .max()
+    }
 }
 
 /// Handle a single connection (reads messages from pipe/socket).
 ///
-/// `outbound_rx` receives messages destined for this connection's client
-/// (e.g., responses, broadcast events). It should be the receiver half
-/// of the channel whose sender is stored in `Connection.tx`.
+/// # Channel wiring (Tier 3.K audit — verified correct)
+///
+/// A **single** `mpsc::unbounded_channel()` is created per connection in
+/// [`IpcServer::accept_connection`](crate::server::IpcServer). The `tx` end is
+/// stored in [`Connection.tx`] so the router/broadcast system can push
+/// responses and events. The `rx` end is passed here as `outbound_rx` and
+/// forwarded to the writer task, which serialises messages and writes them
+/// to the socket. Because both sides originate from the same channel,
+/// anything sent via `Connection::send()` or
+/// `ConnectionManager::broadcast_to_subscribers()` is guaranteed to reach
+/// the client's socket writer.
 pub async fn handle_connection<S>(
     stream: S,
     connection: Arc<Connection>,
@@ -390,5 +421,191 @@ mod tests {
 
         assert!(conn.is_subscribed_to("test.event"));
         assert!(!conn.is_subscribed_to("other.event"));
+    }
+
+    #[test]
+    fn test_keep_alive_interval_is_30s() {
+        assert_eq!(KEEP_ALIVE_INTERVAL, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_connected_at_is_set_on_creation() {
+        let before = Instant::now();
+        let (tx, _) = mpsc::unbounded_channel();
+        let conn = Connection::new(tx);
+        let after = Instant::now();
+
+        // connected_at should be between before and after
+        assert!(conn.connected_at >= before);
+        assert!(conn.connected_at <= after);
+    }
+
+    #[test]
+    fn test_connection_ages_empty() {
+        let manager = ConnectionManager::new(10);
+        assert!(manager.connection_ages().is_empty());
+        assert_eq!(manager.oldest_connection_age_secs(), None);
+    }
+
+    #[tokio::test]
+    async fn test_connection_ages_returns_entries() {
+        let manager = ConnectionManager::new(10);
+
+        let (tx1, _) = mpsc::unbounded_channel();
+        let (tx2, _) = mpsc::unbounded_channel();
+
+        let conn1 = Connection::new(tx1);
+        let id1 = conn1.id.clone();
+        manager
+            .add_connection(conn1)
+            .expect("add connection 1 in test");
+
+        let conn2 = Connection::new(tx2);
+        let id2 = conn2.id.clone();
+        manager
+            .add_connection(conn2)
+            .expect("add connection 2 in test");
+
+        let ages = manager.connection_ages();
+        assert_eq!(ages.len(), 2);
+
+        // Both should have been created just now — age should be very small
+        let ids: Vec<&String> = ages.iter().map(|(id, _)| id).collect();
+        assert!(ids.contains(&&id1));
+        assert!(ids.contains(&&id2));
+
+        for (_id, secs) in &ages {
+            assert!(*secs < 5, "freshly created connection should be < 5s old");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oldest_connection_age_secs() {
+        let manager = ConnectionManager::new(10);
+
+        // No connections → None
+        assert_eq!(manager.oldest_connection_age_secs(), None);
+
+        let (tx, _) = mpsc::unbounded_channel();
+        manager
+            .add_connection(Connection::new(tx))
+            .expect("add connection in test");
+
+        // At least one connection → Some(age)
+        let age = manager
+            .oldest_connection_age_secs()
+            .expect("should return Some when connections exist");
+        assert!(age < 5, "freshly created connection age should be < 5s");
+    }
+
+    /// Verify that a message sent via `Connection.tx` (used by `Connection::send()`
+    /// and `ConnectionManager::broadcast_to_subscribers()`) is received on the `rx`
+    /// end that `handle_connection` passes to its writer task.
+    ///
+    /// This proves the channel wiring is correct: one `mpsc::unbounded_channel()`
+    /// is created per connection, `tx` goes into `Connection`, `rx` goes to the
+    /// writer task. (Tier 3.K audit — verified not a bug.)
+    #[tokio::test]
+    async fn test_connection_tx_reaches_writer_rx() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<JsonRpcMessage>();
+        let conn = Connection::new(tx);
+
+        // Build a sample response message
+        let msg = JsonRpcMessage::Response(crate::protocol::JsonRpcResponse::success(
+            serde_json::json!({"answer": 42}),
+            crate::protocol::RequestId::Number(1),
+        ));
+
+        // Send through the Connection public API (same path as router responses)
+        conn.send(msg.clone())
+            .await
+            .expect("send through Connection.tx should succeed");
+
+        // The writer task would call `rx.recv()` — verify the message arrives
+        let received = rx
+            .try_recv()
+            .expect("rx should have the message sent via Connection.tx");
+
+        // Round-trip check: serialise both and compare
+        let sent_json = msg.to_string().expect("serialize sent message");
+        let recv_json = received.to_string().expect("serialize received message");
+        assert_eq!(sent_json, recv_json);
+    }
+
+    /// End-to-end test: send a message via `Connection.tx`, let the writer
+    /// task inside `handle_connection` serialise it, and verify the bytes
+    /// appear on the client-side of a duplex stream.
+    ///
+    /// This exercises the full writer path (Tier 3.K audit).
+    #[tokio::test]
+    async fn test_handle_connection_writer_delivers_to_stream() {
+        use tokio::io::AsyncBufReadExt as _;
+
+        // Create an in-memory duplex stream.
+        // `server_side` goes to handle_connection; `client_side` simulates
+        // the remote client that reads responses.
+        let (server_side, client_side) = tokio::io::duplex(8192);
+
+        // Single channel: tx → Connection, rx → writer task (via handle_connection)
+        let (tx, rx) = mpsc::unbounded_channel::<JsonRpcMessage>();
+        let conn = Arc::new(Connection::new(tx));
+
+        // Router channel (not exercised here, but required by the API)
+        let (router_tx, _router_rx) = mpsc::unbounded_channel();
+
+        // Spawn handle_connection — it will block reading from server_side,
+        // but the writer task starts immediately.
+        let conn_clone = conn.clone();
+        tokio::spawn(async move {
+            let _ = handle_connection(server_side, conn_clone, router_tx, rx).await;
+        });
+
+        // Send a response through Connection.tx
+        let msg = JsonRpcMessage::Response(crate::protocol::JsonRpcResponse::success(
+            serde_json::json!({"delivered": true}),
+            crate::protocol::RequestId::Number(99),
+        ));
+        conn.send(msg.clone())
+            .await
+            .expect("send through Connection.tx");
+
+        // Read the line that the writer task wrote to the stream
+        let reader = tokio::io::BufReader::new(client_side);
+        let mut lines = reader.lines();
+        let line = tokio::time::timeout(Duration::from_secs(2), lines.next_line())
+            .await
+            .expect("should not time out waiting for writer output")
+            .expect("IO should succeed")
+            .expect("should get at least one line");
+
+        // The line should be valid JSON matching the sent message
+        let received: JsonRpcMessage =
+            serde_json::from_str(&line).expect("writer output should be valid JSON-RPC");
+        let expected_json = msg.to_string().expect("serialize expected");
+        let received_json = received.to_string().expect("serialize received");
+        assert_eq!(expected_json, received_json);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_connections_removes_timed_out() {
+        let manager = ConnectionManager::new(10);
+
+        let (tx, _) = mpsc::unbounded_channel();
+        let conn = Connection::new(tx);
+
+        // Manually backdate the last_activity so it looks stale
+        {
+            let mut activity = conn.last_activity.write();
+            *activity = Instant::now() - Duration::from_secs(200);
+        }
+
+        manager
+            .add_connection(conn)
+            .expect("add connection in test");
+        assert_eq!(manager.get_active_count(), 1);
+
+        let removed = manager.cleanup_stale_connections();
+        assert_eq!(removed, 1);
+        assert_eq!(manager.get_active_count(), 0);
     }
 }
