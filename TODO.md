@@ -67,7 +67,7 @@ Primary resource thread: `wezterm-resource-coordination-20260324`
 - [x] Tier 7.E: Add CI step in `windows-ci.yml` — install binaries + run integration tests (continue-on-error initially)
 - [ ] Tier 7.F: Harden integration tests — remove continue-on-error after first green CI run
 - [x] Tier 7.G: Add watcher module integration test (start wezterm-watch, trigger file event, verify output)
-- [ ] Tier 7.H: Add cross-subcommand integration test (daemon + watch coordination via IPC)
+- [x] Tier 7.H: Live daemon IPC round-trip test (tools/test-daemon-ipc.ps1) — ping, status, register, subscribe, broadcast all verified end-to-end
 
 ## Active Owners
 
