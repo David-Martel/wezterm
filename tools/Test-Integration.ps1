@@ -347,6 +347,102 @@ function Test-DaemonShutdown {
     $script:TestDaemon = $null
 }
 
+function Test-WatcherIntegration {
+    Write-Host "`n=== Watcher Event Detection ===" -ForegroundColor Cyan
+
+    # Locate the watcher binary — standalone exe or wezterm subcommand
+    $watcherExe = Join-Path $InstallDir 'wezterm-watch.exe'
+    $weztermExe = Join-Path $InstallDir 'wezterm.exe'
+    $useStandalone = Test-Path $watcherExe
+    $useSubcommand = (-not $useStandalone) -and (Test-Path $weztermExe)
+
+    if (-not $useStandalone -and -not $useSubcommand) {
+        Add-TestResult 'Watcher' 'Binary' 'SKIP' 'Neither wezterm-watch.exe nor wezterm.exe found'
+        return
+    }
+
+    $binaryLabel = if ($useStandalone) { 'wezterm-watch.exe' } else { 'wezterm.exe watch' }
+    Add-TestResult 'Watcher' 'Binary' 'PASS' "Using $binaryLabel"
+
+    # Create temp directory and output files
+    $watchDir = Join-Path ([System.IO.Path]::GetTempPath()) "wezterm-watch-integ-$(Get-Random)"
+    New-Item -ItemType Directory -Path $watchDir -Force | Out-Null
+
+    $outFile = Join-Path ([System.IO.Path]::GetTempPath()) "watcher-integ-out-$(Get-Random).txt"
+    $errFile = "$outFile.err"
+    $watcherProc = $null
+
+    try {
+        # Start the watcher process watching our temp directory (events format for easy parsing)
+        if ($useStandalone) {
+            $watcherProc = Start-Process -FilePath $watcherExe `
+                -ArgumentList "$watchDir --format events --no-git --interval 50" `
+                -PassThru -NoNewWindow `
+                -RedirectStandardOutput $outFile `
+                -RedirectStandardError $errFile
+        } else {
+            $watcherProc = Start-Process -FilePath $weztermExe `
+                -ArgumentList "watch $watchDir --format events --no-git --interval 50" `
+                -PassThru -NoNewWindow `
+                -RedirectStandardOutput $outFile `
+                -RedirectStandardError $errFile
+        }
+
+        # Wait for watcher to initialise its file system listener
+        Start-Sleep -Seconds 2
+
+        if ($watcherProc.HasExited) {
+            $stderr = ''
+            if (Test-Path $errFile) {
+                $stderr = Get-Content $errFile -Raw -ErrorAction SilentlyContinue
+            }
+            if ($stderr) { $stderr = $stderr.Trim() }
+            if ($stderr.Length -gt 80) { $stderr = $stderr.Substring(0, 77) + '...' }
+            Add-TestResult 'Watcher' 'Start' 'FAIL' "Exited early (code $($watcherProc.ExitCode)): $stderr"
+            return
+        }
+
+        Add-TestResult 'Watcher' 'Start' 'PASS' "PID $($watcherProc.Id)"
+
+        # Create a sentinel file in the watched directory
+        $sentinelName = "watcher-test-$(Get-Random).txt"
+        $sentinelPath = Join-Path $watchDir $sentinelName
+        Set-Content -Path $sentinelPath -Value "integration test sentinel"
+
+        # Give the watcher time to detect and write the event
+        Start-Sleep -Seconds 3
+
+        # Read captured stdout and check for the sentinel filename
+        $output = ''
+        if (Test-Path $outFile) {
+            $output = Get-Content $outFile -Raw -ErrorAction SilentlyContinue
+        }
+
+        if ($output -and $output -match [regex]::Escape($sentinelName)) {
+            Add-TestResult 'Watcher' 'Event detected' 'PASS' "Found '$sentinelName' in watcher output"
+        } elseif ($output) {
+            $preview = if ($output.Length -gt 120) { $output.Substring(0, 117) + '...' } else { $output.Trim() }
+            Add-TestResult 'Watcher' 'Event detected' 'FAIL' "Output present but sentinel not found: $preview"
+        } else {
+            Add-TestResult 'Watcher' 'Event detected' 'FAIL' 'No output captured from watcher'
+        }
+    } catch {
+        Add-TestResult 'Watcher' 'Integration' 'FAIL' $_.Exception.Message
+    } finally {
+        # Kill watcher process
+        if ($watcherProc -and -not $watcherProc.HasExited) {
+            try {
+                $watcherProc.Kill()
+                $watcherProc.WaitForExit(3000)
+            } catch {}
+        }
+
+        # Cleanup temp files and directory
+        Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue
+        Remove-Item $watchDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Test-ValidateConfigIntegration {
     Write-Host "`n=== Config Validation (Integration) ===" -ForegroundColor Cyan
 
@@ -462,6 +558,9 @@ $script:TestDaemon = $null
 Test-DaemonLifecycle
 Test-DaemonIPC
 Test-DaemonShutdown
+
+# Watcher event detection
+Test-WatcherIntegration
 
 # Config validation (standalone wezterm.exe test)
 Test-ValidateConfigIntegration
