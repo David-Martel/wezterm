@@ -2,7 +2,7 @@
 # Usage: pwsh -NoLogo -NoProfile -File tools/test-daemon-ipc.ps1
 
 $ErrorActionPreference = 'Stop'
-$daemonExe = 'C:\Users\david\.cache\claude\ipc-test\debug\wezterm-utils-daemon.exe'
+$daemonExe = 'C:\Users\david\bin\wezterm-utils-daemon.exe'
 $pipeName = 'wezterm-ipc-test-' + (Get-Random)
 $pipeFullName = "\\.\pipe\$pipeName"
 
