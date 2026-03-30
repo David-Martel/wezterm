@@ -141,7 +141,7 @@ Primary resource thread: `wezterm-resource-coordination-20260324`
 | Phase 1: Rendering + Config | 95% | Verification testing only |
 | Phase 2: Chrome Overhaul | 85% | Settings tab, click handlers |
 | Phase 3: Panel System | 75% | State persistence validation, Settings tab |
-| Phase 4: Rust Investment | 65% | Module framework integrated, daemon complete, subcommands live, Lua bindings, example module, 103 daemon tests, runtime test harness |
+| Phase 4: Rust Investment | 75% | Rust-native: panels (wezterm.panels.*), status bar (wezterm.status.*), validation (wezterm.validation.*). GUI test passes. 92 module-framework tests. |
 
 ## Known Constraints
 
