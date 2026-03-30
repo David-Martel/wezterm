@@ -7,7 +7,10 @@
 --     is reused with zero IPC overhead.
 --   - Tab titles cache per (tab_id, process_name, hover, is_active).
 --   - TUI name lookup uses a hash set for O(1) matching.
---   - Panel state read from wezterm.GLOBAL (zero IPC, shared memory).
+--   - Panel state read via wezterm.panels Rust API when available,
+--     falling back to wezterm.GLOBAL (zero IPC, shared memory).
+--   - Slow-path data pushed to wezterm.status Rust cache so other modules
+--     (panels, daemon IPC) can read it without Lua round-trips.
 --   - All event handlers use pcall with fallback to prevent error cascades.
 
 local M = {}
@@ -153,6 +156,19 @@ function M.new(wezterm, schemes, shared)
   end
 
   local function read_panel_state(window)
+    -- Prefer Rust-native panels API when available (zero IPC, no GLOBAL lookup)
+    if wezterm.panels then
+      local state = {}
+      local win_id = window:window_id()
+      for _, name in ipairs(PANEL_ORDER) do
+        local ok_inner, pane_id = pcall(wezterm.panels.get_pane_id, win_id, name)
+        if ok_inner and pane_id then
+          state[name] = pane_id
+        end
+      end
+      return state
+    end
+    -- Fallback to GLOBAL (shared memory, zero IPC)
     local global_state = wezterm.GLOBAL.codex_ui_panel_state
     if not global_state then return {} end
     return global_state[window_state_key(window)] or {}
@@ -243,6 +259,10 @@ function M.new(wezterm, schemes, shared)
         end
         -- Clock changed: need to rebuild format but skip IPC
         status.clock = clock
+        -- Keep Rust cache clock in sync without a full update
+        if wezterm.status then
+          pcall(wezterm.status.update_clock, clock)
+        end
       else
         -- Slow path: poll IPC for fresh data (once per second)
         status.last_poll = now
@@ -261,6 +281,20 @@ function M.new(wezterm, schemes, shared)
         status.llm_agent = llm_agent or ""
 
         status.clock = wezterm.strftime("%H:%M")
+
+        -- Push gathered data to Rust-native status cache so other modules
+        -- (panels, daemon IPC) can read it without additional Lua round-trips.
+        if wezterm.status then
+          local gpu_name = wezterm.GLOBAL.codex_ui_gpu_name
+          pcall(wezterm.status.update, {
+            cwd       = cwd_raw or "",
+            cwd_short = status.cwd_short,
+            workspace = status.workspace,
+            clock     = status.clock,
+            llm_agent = status.llm_agent,
+            gpu_name  = gpu_name or "",
+          })
+        end
       end
 
       -- Rebuild left status (panel toggles) -- reads GLOBAL, no IPC
