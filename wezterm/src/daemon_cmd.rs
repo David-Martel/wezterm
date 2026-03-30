@@ -28,10 +28,14 @@ impl DaemonCommand {
         use wezterm_utils_daemon::config::Config;
         use wezterm_utils_daemon::server::IpcServer;
 
-        // Initialize tracing before anything else
+        // Try to initialize tracing — may fail if wezterm already set up a subscriber.
+        // When run as `wezterm daemon`, the parent binary installs env_bootstrap logging
+        // first, so try_init() gracefully no-ops in that case.
         let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&self.log_level));
-        tracing_subscriber::fmt().with_env_filter(env_filter).init();
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .try_init();
 
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -67,11 +71,7 @@ impl DaemonCommand {
             info!("  Max connections: {}", config.max_connections);
 
             let version = env!("CARGO_PKG_VERSION").to_string();
-            let server = IpcServer::new(
-                config.pipe_name.clone(),
-                config.max_connections,
-                version,
-            );
+            let server = IpcServer::new(config.pipe_name.clone(), config.max_connections, version);
 
             info!("Starting daemon...");
 

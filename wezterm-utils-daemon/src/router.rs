@@ -134,10 +134,17 @@ impl MessageRouter {
     }
 
     fn parse_daemon_method(&self, request: &JsonRpcRequest) -> Result<DaemonMethod> {
-        let json = serde_json::to_string(request)
-            .map_err(|e| DaemonError::Protocol(format!("Failed to serialize: {}", e)))?;
-
-        serde_json::from_str(&json)
+        // DaemonMethod uses #[serde(tag = "method")] so it expects all fields
+        // at the root level. JSON-RPC puts them under "params", so we merge
+        // params into the root object before deserializing.
+        let mut obj = serde_json::Map::new();
+        obj.insert("method".to_string(), Value::String(request.method.clone()));
+        if let Some(Value::Object(params)) = &request.params {
+            for (k, v) in params {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
+        serde_json::from_value(Value::Object(obj))
             .map_err(|e| DaemonError::Protocol(format!("Invalid daemon method: {}", e)))
     }
 
@@ -426,9 +433,7 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let conn = Connection::new(tx);
         let conn_id = conn.id.clone();
-        let conn = cm
-            .add_connection(conn)
-            .expect("add connection in test");
+        let conn = cm.add_connection(conn).expect("add connection in test");
 
         // Subscribe through the router handler
         let subscriptions = vec![EventSubscription {
@@ -454,16 +459,16 @@ mod tests {
             Some(json!({"path": "/tmp/test.txt"})),
             None,
         );
-        let recipients = cm.broadcast_to_subscribers(
-            "file.changed",
-            JsonRpcMessage::Request(notification),
-        );
+        let recipients =
+            cm.broadcast_to_subscribers("file.changed", JsonRpcMessage::Request(notification));
 
         assert_eq!(recipients.len(), 1, "broadcast should reach one subscriber");
         assert_eq!(recipients[0], conn_id);
 
         // Verify the message was actually delivered to the channel
-        let delivered = rx.try_recv().expect("channel should contain the broadcast message");
+        let delivered = rx
+            .try_recv()
+            .expect("channel should contain the broadcast message");
         match delivered {
             JsonRpcMessage::Request(req) => {
                 assert_eq!(req.method, "event/file.changed");
@@ -480,9 +485,7 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let conn = Connection::new(tx);
         let conn_id = conn.id.clone();
-        let conn = cm
-            .add_connection(conn)
-            .expect("add connection in test");
+        let conn = cm.add_connection(conn).expect("add connection in test");
 
         // Subscribe then unsubscribe
         let subscriptions = vec![EventSubscription {
@@ -509,11 +512,12 @@ mod tests {
 
         // Broadcast should reach nobody
         let notification = JsonRpcRequest::new("event/file.changed", Some(json!({})), None);
-        let recipients = cm.broadcast_to_subscribers(
-            "file.changed",
-            JsonRpcMessage::Request(notification),
+        let recipients =
+            cm.broadcast_to_subscribers("file.changed", JsonRpcMessage::Request(notification));
+        assert!(
+            recipients.is_empty(),
+            "broadcast should reach no subscribers after unsubscribe"
         );
-        assert!(recipients.is_empty(), "broadcast should reach no subscribers after unsubscribe");
 
         // Channel should be empty
         assert!(
