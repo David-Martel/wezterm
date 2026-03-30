@@ -50,6 +50,7 @@
 pub mod context;
 pub mod ipc;
 pub mod modules;
+pub mod panels;
 pub mod registry;
 pub mod startup;
 
