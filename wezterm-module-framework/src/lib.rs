@@ -53,6 +53,8 @@ pub mod modules;
 pub mod panels;
 pub mod registry;
 pub mod startup;
+pub mod status_bar;
+pub mod validation;
 
 // Re-export main types
 pub use context::ModuleContext;

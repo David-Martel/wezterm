@@ -67,6 +67,16 @@ pub fn register_lua_apis(lua: &mlua::Lua) -> anyhow::Result<()> {
         log::warn!("Failed to register panels Lua API: {e}");
     }
 
+    // Register validation Lua API (wezterm.validation.*)
+    if let Err(e) = crate::validation::register_lua_api(lua) {
+        log::warn!("Failed to register validation Lua API: {e}");
+    }
+
+    // Register status bar Lua API (wezterm.status.*)
+    if let Err(e) = crate::status_bar::register_lua_api(lua) {
+        log::warn!("Failed to register status bar Lua API: {e}");
+    }
+
     log::debug!("Module Lua APIs registered");
     Ok(())
 }
