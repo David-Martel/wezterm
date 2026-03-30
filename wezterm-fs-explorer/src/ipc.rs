@@ -392,7 +392,6 @@ impl IpcClient {
     /// # Errors
     ///
     /// Returns an error if the connection fails or times out.
-    #[expect(dead_code, reason = "TODO: add justification")]
     pub async fn connect_timeout(
         path: impl AsRef<Path>,
         timeout: std::time::Duration,

@@ -6,9 +6,10 @@ use std::path::PathBuf;
 pub struct SearchResult {
     /// The matching path
     pub path: PathBuf,
-    /// Indices of matched characters in the file name for highlighting
-    /// Reserved for future highlighting functionality - not yet implemented
-    #[expect(dead_code, reason = "TODO: add justification")]
+    /// Indices of matched characters in the file name for highlighting.
+    /// Populated by nucleo but not yet consumed by the TUI: draw_file_list() renders
+    /// plain text per-entry and does not support per-character styled spans.
+    /// Wire into ratatui Span-based rendering when search-result highlighting is added.
     pub indices: Vec<u32>,
 }
 

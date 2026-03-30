@@ -9,10 +9,16 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::ipc;
+
+/// Default timeout for IPC daemon connections (5 seconds).
+/// Prevents the explorer from hanging indefinitely if the daemon socket
+/// exists but the daemon process is unresponsive.
+const IPC_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params")]
@@ -81,7 +87,7 @@ impl IpcClient {
     }
 
     pub async fn connect(&mut self) -> Result<()> {
-        match ipc::IpcClient::connect(&self.pipe_path).await {
+        match ipc::IpcClient::connect_timeout(&self.pipe_path, IPC_CONNECT_TIMEOUT).await {
             Ok(_stream) => {
                 self.connected = true;
                 log::info!("Connected to IPC daemon at {}", self.pipe_path);
@@ -90,6 +96,14 @@ impl IpcClient {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 log::warn!(
                     "IPC daemon not available at {} - running in standalone mode",
+                    self.pipe_path
+                );
+                self.connected = false;
+                Ok(())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                log::warn!(
+                    "IPC daemon connection timed out at {} - running in standalone mode",
                     self.pipe_path
                 );
                 self.connected = false;
@@ -161,7 +175,7 @@ impl IpcClient {
         pipe_path: String,
         sender: mpsc::UnboundedSender<IpcMessage>,
     ) -> Result<()> {
-        let stream = ipc::IpcClient::connect(&pipe_path)
+        let stream = ipc::IpcClient::connect_timeout(&pipe_path, IPC_CONNECT_TIMEOUT)
             .await
             .context("Failed to connect to IPC socket for events")?;
 

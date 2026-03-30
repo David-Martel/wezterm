@@ -9,6 +9,7 @@ use wezterm_fs_explorer::search::FuzzySearch;
 pub enum AppMode {
     Normal,
     Search,
+    Help,
     Input(InputMode),
     Confirmation(ConfirmationMode),
 }
@@ -161,6 +162,14 @@ impl App {
 
     pub fn toggle_preview_pane(&mut self) {
         self.show_preview = !self.show_preview;
+    }
+
+    pub fn show_help(&mut self) {
+        self.mode = AppMode::Help;
+    }
+
+    pub fn hide_help(&mut self) {
+        self.mode = AppMode::Normal;
     }
 
     pub fn start_search(&mut self) {

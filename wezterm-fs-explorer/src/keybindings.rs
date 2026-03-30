@@ -1,14 +1,16 @@
-#[expect(dead_code, reason = "TODO: add justification")]
+/// Keyboard shortcut definitions for the help overlay.
+///
+/// Provides a central registry of key bindings displayed when the user
+/// presses `?` in Normal mode.
 pub struct KeyBindings;
 
-#[expect(dead_code, reason = "TODO: add justification")]
 impl KeyBindings {
     pub fn get_help_text() -> Vec<(&'static str, &'static str)> {
         vec![
-            ("j/↓", "Move down"),
-            ("k/↑", "Move up"),
-            ("h/←", "Go to parent directory"),
-            ("l/→", "Enter directory"),
+            ("j/\u{2193}", "Move down"),
+            ("k/\u{2191}", "Move up"),
+            ("h/\u{2190}", "Go to parent directory"),
+            ("l/\u{2192}", "Enter directory"),
             ("g", "Go to top"),
             ("G", "Go to bottom"),
             ("/", "Search/filter"),
@@ -21,12 +23,9 @@ impl KeyBindings {
             ("n", "New file/directory"),
             (".", "Toggle hidden files"),
             ("Tab", "Toggle preview pane"),
+            ("?", "Show this help"),
             ("q/Esc", "Quit"),
             ("Ctrl+c", "Force quit"),
         ]
-    }
-
-    pub fn format_key_binding(key: &str, description: &str) -> String {
-        format!("{:12} {}", key, description)
     }
 }

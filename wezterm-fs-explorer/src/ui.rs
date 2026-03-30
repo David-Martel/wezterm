@@ -1,10 +1,12 @@
 use crate::app::{App, AppMode, ConfirmationMode, InputMode};
 use crate::file_entry::FileType;
 use crate::icons::Icons;
+use crate::keybindings::KeyBindings;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 
@@ -21,6 +23,11 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_title_bar(f, app, chunks[0]);
     draw_main_content(f, app, chunks[1]);
     draw_status_bar(f, app, chunks[2]);
+
+    // Draw help overlay on top of everything when in Help mode
+    if app.mode == AppMode::Help {
+        draw_help_overlay(f);
+    }
 }
 
 fn draw_title_bar(f: &mut Frame, app: &App, area: Rect) {
@@ -172,6 +179,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
             format!("Move to: {}_", app.input_buffer)
         }
         AppMode::Confirmation(ConfirmationMode::Delete) => String::from("Delete selected? (y/n)"),
+        AppMode::Help => String::from("Press any key to close help"),
     };
 
     let status = Paragraph::new(status_text)
@@ -190,6 +198,40 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         let error_area = centered_rect(60, 20, f.size());
         f.render_widget(error_widget, error_area);
     }
+}
+
+fn draw_help_overlay(f: &mut Frame) {
+    let area = centered_rect(60, 80, f.size());
+
+    // Clear the area behind the popup
+    f.render_widget(Clear, area);
+
+    let bindings = KeyBindings::get_help_text();
+    let lines: Vec<Line> = bindings
+        .iter()
+        .map(|(key, desc)| {
+            Line::from(vec![
+                Span::styled(
+                    format!("{:12}", key),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(desc.to_string()),
+            ])
+        })
+        .collect();
+
+    let help_widget = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Keyboard Shortcuts (press any key to close) ")
+                .style(Style::default().fg(Color::White)),
+        )
+        .style(Style::default().fg(Color::White));
+
+    f.render_widget(help_widget, area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

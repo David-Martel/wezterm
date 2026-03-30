@@ -224,8 +224,13 @@ async fn run_app<B: ratatui::backend::Backend>(
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 match (key.code, key.modifiers) {
+                    // Ctrl+C always force-quits regardless of mode
                     (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                         return Ok(vec![]);
+                    }
+                    // Help mode: any key dismisses the overlay
+                    _ if app.mode == app::AppMode::Help => {
+                        app.hide_help();
                     }
                     (KeyCode::Char('q'), _) => {
                         return Ok(vec![]);
@@ -316,6 +321,9 @@ async fn run_app<B: ratatui::backend::Backend>(
                     }
                     (KeyCode::Char('n'), _) => {
                         app.start_new_mode();
+                    }
+                    (KeyCode::Char('?'), _) => {
+                        app.show_help();
                     }
                     (KeyCode::Char('y'), _) => {
                         if app.is_confirmation_mode() {
