@@ -44,10 +44,8 @@ pub type WatchCallbackId = u64;
 
 /// A watch subscription.
 struct WatchSubscription {
-    #[expect(dead_code, reason = "TODO: add justification")]
     path: PathBuf,
     watcher: Watcher,
-    #[expect(dead_code, reason = "TODO: add justification")]
     recursive: bool,
     /// Handle to the forwarder thread for this subscription
     forwarder_handle: Option<JoinHandle<()>>,
@@ -136,19 +134,39 @@ impl WatcherModuleHandle {
     }
 
     /// Stop watching a path.
+    ///
+    /// Returns `Ok(())` regardless of whether the subscription existed.
+    /// Logs the watched path and recursive flag when a subscription is removed.
     pub fn unwatch(&self, id: WatchCallbackId) -> Result<()> {
         let mut subs = self.subscriptions.lock();
         if let Some(mut sub) = subs.remove(&id) {
-            // Stop the watcher first (closes its channel, causing forwarder to exit)
-            sub.watcher.unwatch()?;
+            log::info!(
+                "Unwatching {:?} (recursive={}, id={})",
+                sub.path,
+                sub.recursive,
+                id
+            );
 
-            // Wait for forwarder thread to finish (with timeout to avoid hanging)
-            if let Some(handle) = sub.forwarder_handle.take() {
-                // Give thread a chance to exit gracefully
+            // Take the forwarder handle before dropping the subscription.
+            let forwarder = sub.forwarder_handle.take();
+
+            // Stop the filesystem watcher and then drop the entire
+            // subscription. Dropping the Watcher closes its internal
+            // channel sender, which causes the forwarder thread's
+            // `watcher_rx.recv()` to return `Err(Disconnected)` so
+            // the thread exits cleanly.
+            let _ = sub.watcher.unwatch();
+            drop(sub);
+
+            // Now join the forwarder thread (it will have exited because
+            // the watcher channel was closed above).
+            if let Some(handle) = forwarder {
                 let _ = handle.join();
             }
 
             log::debug!("Removed watch subscription {}", id);
+        } else {
+            log::debug!("No subscription found for id {}", id);
         }
         Ok(())
     }
@@ -374,15 +392,21 @@ impl Module for WatcherModule {
             let _ = tx.send(());
         }
 
-        // Clear all subscriptions and join forwarder threads
+        // Clear all subscriptions: unwatch, drop watchers, then join
+        // forwarder threads. The watchers must be dropped before joining
+        // so their internal channels close and forwarder threads can exit.
         let mut subs = self.handle.subscriptions.lock();
+        let mut forwarders = Vec::new();
         for (id, mut sub) in subs.drain() {
             log::debug!("Cleaning up watch subscription {}", id);
-            let _ = sub.watcher.unwatch();
-            // Wait for forwarder thread to exit
             if let Some(handle) = sub.forwarder_handle.take() {
-                let _ = handle.join();
+                forwarders.push(handle);
             }
+            let _ = sub.watcher.unwatch();
+            // sub (and its Watcher) is dropped here, closing the channel
+        }
+        for handle in forwarders {
+            let _ = handle.join();
         }
 
         // Clear the event sender
@@ -518,5 +542,42 @@ mod tests {
         let caps = module.required_capabilities();
         assert!(caps.contains(Capabilities::FILESYSTEM_READ));
         assert!(caps.contains(Capabilities::NOTIFICATIONS));
+    }
+
+    #[test]
+    fn test_unwatch_removes_subscription() {
+        let module = WatcherModule::new();
+        let dir = std::env::temp_dir().join("wezterm_test_unwatch");
+        let _ = std::fs::create_dir_all(&dir);
+
+        // Watch the temp directory
+        let id = module
+            .watch(dir.clone(), false, false)
+            .expect("watch should succeed");
+        assert_eq!(module.subscription_count(), 1);
+
+        // Unwatch should succeed and remove the subscription
+        module.unwatch(id).expect("unwatch should succeed");
+        assert_eq!(module.subscription_count(), 0);
+
+        // Unwatching the same ID again should be a no-op (not an error)
+        module
+            .unwatch(id)
+            .expect("double unwatch should not error");
+        assert_eq!(module.subscription_count(), 0);
+
+        // Clean up
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_unwatch_nonexistent_id() {
+        let module = WatcherModule::new();
+
+        // Unwatching an ID that was never registered should succeed
+        module
+            .unwatch(999)
+            .expect("unwatch of nonexistent id should not error");
+        assert_eq!(module.subscription_count(), 0);
     }
 }
