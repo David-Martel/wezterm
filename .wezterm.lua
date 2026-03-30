@@ -29,6 +29,7 @@ package.path = table.concat({
 }, ';')
 
 local shared = require('codex_ui.shared')
+local validator = require('codex_ui.validator')
 local prefs_io = require('codex_ui.prefs')
 local schemes = require('codex_ui.schemes')
 local chrome = require('codex_ui.chrome').new(wezterm, schemes, shared)
@@ -113,6 +114,41 @@ if status and result then
 else
   wezterm.log_warn('WezTerm utilities module not found - utility keybindings will not be available')
 end
+
+-- Subcommand availability: the wezterm binary in this fork supports
+-- 'wezterm explore' and 'wezterm watch' subcommands.  When the standalone
+-- binaries are missing, the panels module uses these as Tier 2 fallbacks.
+-- Mark bins as available so the panel toggle keys remain active even without
+-- standalone binaries.
+local wezterm_exe = (wezterm.executable_dir or '') .. '/wezterm.exe'
+if path_exists(wezterm_exe) then
+  if not utility_bins.explorer then
+    utility_bins.explorer = true
+    wezterm.log_info('Explorer available via wezterm subcommand: ' .. wezterm_exe)
+  end
+  if not utility_bins.watcher then
+    utility_bins.watcher = true
+    wezterm.log_info('Watcher available via wezterm subcommand: ' .. wezterm_exe)
+  end
+end
+
+validator.register(wezterm, shared, {
+  diag_flags = diag_flags,
+  required_modules = {
+    'codex_ui.shared',
+    'codex_ui.prefs',
+    'codex_ui.schemes',
+    'codex_ui.chrome',
+    'codex_ui.panels',
+    'codex_ui.palette',
+  },
+  optional_modules = {
+    'wezterm-utils',
+    'embedded-dev-config',
+  },
+  utility_bins = utility_bins,
+  utility_paths = utility_paths,
+})
 
 -- Initialize panels module (needs utility_bins and paths from above)
 if diag_flags.disable_panels then

@@ -52,9 +52,14 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
     return cwd_raw or wezterm.home_dir
   end
 
+  local function window_state_key(window)
+    -- share-data objects behind wezterm.GLOBAL only accept string object keys.
+    return tostring(window:window_id())
+  end
+
   local function panel_state_for_window(window)
-    local window_id = window:window_id()
     local state = wezterm.GLOBAL.codex_ui_panel_state
+    local window_id = window_state_key(window)
     state[window_id] = state[window_id] or {}
     return state[window_id]
   end
@@ -79,11 +84,11 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
   end
 
   local function mark_window_restored(window)
-    wezterm.GLOBAL.codex_ui_panel_restore_done[window:window_id()] = true
+    wezterm.GLOBAL.codex_ui_panel_restore_done[window_state_key(window)] = true
   end
 
   local function window_restored(window)
-    return wezterm.GLOBAL.codex_ui_panel_restore_done[window:window_id()] == true
+    return wezterm.GLOBAL.codex_ui_panel_restore_done[window_state_key(window)] == true
   end
 
   local function close_tracked_panel(window, panel_name)
@@ -126,7 +131,16 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
     }
   end
 
-  -- Panel definitions: direction, default size, how to launch
+  -- Resolve the wezterm executable path once for subcommand fallbacks.
+  local wezterm_exe = (wezterm.executable_dir or '') .. '/wezterm.exe'
+  local has_wezterm_subcommands = path_exists(wezterm_exe)
+
+  -- Panel definitions: direction, default size, how to launch.
+  -- Each panel uses a tiered fallback:
+  --   Tier 1: Module framework API (native pane, explorer only)
+  --   Tier 2: wezterm subcommand (wezterm explore / wezterm watch)
+  --   Tier 3: Standalone binary (~/bin/wezterm-fs-explorer.exe)
+  --   Tier 4: Build instructions placeholder
   local panel_defs = {
     explorer = {
       direction = 'Right',
@@ -136,6 +150,37 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
         local cwd = current_cwd(pane)
         local cfg = utility_config()
         local explorer_bin = cfg.explorer_bin or utility_paths.explorer_bin
+
+        -- Tier 1: Module framework API (native pane)
+        -- wezterm.fs_explorer is registered by the module framework during
+        -- config setup — it exists inside wezterm-gui but not other contexts.
+        if wezterm.fs_explorer and wezterm.fs_explorer.spawn then
+          local pane_id, err = wezterm.fs_explorer.spawn({ dir = cwd })
+          if pane_id then
+            -- Module API created the pane directly — return nil to signal
+            -- that open_panel should NOT create a split (pane already exists).
+            return nil, pane_id
+          end
+          wezterm.log_warn('Module API spawn failed: ' .. tostring(err) .. ', falling back')
+        end
+
+        -- Tier 2: wezterm subcommand ('wezterm explore')
+        if has_wezterm_subcommands then
+          local args = { wezterm_exe, 'explore' }
+          if cfg.ipc_enabled and cfg.ipc_socket then
+            table.insert(args, '--ipc-socket')
+            table.insert(args, cfg.ipc_socket)
+          end
+          table.insert(args, cwd)
+          return {
+            direction = 'Right',
+            size = 0.35,
+            cwd = cwd,
+            args = args,
+          }
+        end
+
+        -- Tier 3: Standalone binary
         if utility_bins.explorer and path_exists(explorer_bin) then
           local args = { explorer_bin }
           if cfg.ipc_enabled and cfg.ipc_socket then
@@ -149,22 +194,22 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
             cwd = cwd,
             args = args,
           }
-        else
-          -- Placeholder: show build instructions
-          return {
-            direction = 'Right',
-            size = 0.35,
-            cwd = cwd,
-            args = { 'pwsh.exe', '-NoLogo', '-NoProfile', '-Command',
-              "Write-Host 'wezterm-fs-explorer not installed' -ForegroundColor Yellow; " ..
-              "Write-Host 'Expected: " .. explorer_bin:gsub("'", "''") .. "'; " ..
-              "Write-Host 'Build: cd ~/wezterm && cargo build --release -p wezterm-fs-explorer'; " ..
-              "Write-Host ''; " ..
-              "Write-Host 'Press any key to close...' -ForegroundColor DarkGray; " ..
-              "$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
-            },
-          }
         end
+
+        -- Tier 4: Build instructions placeholder
+        return {
+          direction = 'Right',
+          size = 0.35,
+          cwd = cwd,
+          args = { 'pwsh.exe', '-NoLogo', '-NoProfile', '-Command',
+            "Write-Host 'wezterm-fs-explorer not available' -ForegroundColor Yellow; " ..
+            "Write-Host 'Expected: " .. explorer_bin:gsub("'", "''") .. "'; " ..
+            "Write-Host 'Build: cd ~/wezterm && cargo build --release -p wezterm-fs-explorer'; " ..
+            "Write-Host ''; " ..
+            "Write-Host 'Press any key to close...' -ForegroundColor DarkGray; " ..
+            "$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
+          },
+        }
       end,
     },
     watcher = {
@@ -175,6 +220,20 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
         local cwd = current_cwd(pane)
         local cfg = utility_config()
         local watcher_bin = cfg.watcher_bin or utility_paths.watcher_bin
+
+        -- Tier 1: wezterm subcommand ('wezterm watch')
+        -- The watcher module API (wezterm.watcher.watch) is a background
+        -- service, not a TUI pane, so subcommand is the preferred tier here.
+        if has_wezterm_subcommands then
+          return {
+            direction = 'Bottom',
+            size = 0.26,
+            cwd = cwd,
+            args = { wezterm_exe, 'watch', cwd },
+          }
+        end
+
+        -- Tier 2: Standalone binary
         if utility_bins.watcher and path_exists(watcher_bin) then
           return {
             direction = 'Bottom',
@@ -182,21 +241,22 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
             cwd = cwd,
             args = { watcher_bin, cwd },
           }
-        else
-          return {
-            direction = 'Bottom',
-            size = 0.26,
-            cwd = cwd,
-            args = { 'pwsh.exe', '-NoLogo', '-NoProfile', '-Command',
-              "Write-Host 'wezterm-watch not installed' -ForegroundColor Yellow; " ..
-              "Write-Host 'Expected: " .. watcher_bin:gsub("'", "''") .. "'; " ..
-              "Write-Host 'Build: cd ~/wezterm && cargo build --release -p wezterm-watch'; " ..
-              "Write-Host ''; " ..
-              "Write-Host 'Press any key to close...' -ForegroundColor DarkGray; " ..
-              "$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
-            },
-          }
         end
+
+        -- Tier 3: Build instructions placeholder
+        return {
+          direction = 'Bottom',
+          size = 0.26,
+          cwd = cwd,
+          args = { 'pwsh.exe', '-NoLogo', '-NoProfile', '-Command',
+            "Write-Host 'wezterm-watch not available' -ForegroundColor Yellow; " ..
+            "Write-Host 'Expected: " .. watcher_bin:gsub("'", "''") .. "'; " ..
+            "Write-Host 'Build: cd ~/wezterm && cargo build --release -p wezterm-watch'; " ..
+            "Write-Host ''; " ..
+            "Write-Host 'Press any key to close...' -ForegroundColor DarkGray; " ..
+            "$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
+          },
+        }
       end,
     },
     editor = {
@@ -237,7 +297,19 @@ function M.new(wezterm, act, shared, utility_bins, utility_paths, utils_availabl
 
   local function open_panel(window, pane, panel_name)
     local def = panel_defs[panel_name]
-    local opts = def.launch(pane)
+    local opts, module_pane_id = def.launch(pane)
+
+    if module_pane_id then
+      -- Module API created the pane directly (Tier 1) — no split needed.
+      panel_state_for_window(window)[panel_name] = module_pane_id
+      return nil
+    end
+
+    if not opts then
+      -- Launch failed entirely (module API error with no fallback match).
+      return nil
+    end
+
     local new_pane = pane:split({
       direction = opts.direction,
       size = opts.size,
